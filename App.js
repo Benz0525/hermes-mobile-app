@@ -1,9 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
   StyleSheet, Text, View, TextInput, TouchableOpacity,
-  FlatList, KeyboardAvoidingView, Platform, StatusBar, ActivityIndicator
+  FlatList, KeyboardAvoidingView, Platform, StatusBar, ActivityIndicator, SafeAreaView
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 
 // ====== 配置 ======
 const API_URL = 'http://8.163.2.252/app-api/chat';
@@ -88,7 +87,7 @@ export default function App() {
   );
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor={C.bg} />
 
       {/* 顶栏 */}
