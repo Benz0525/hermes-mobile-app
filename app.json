@@ -26,6 +26,8 @@
     "plugins": [
       "expo-status-bar"
     ],
+    "newArchEnabled": false,
+    "jsEngine": "hermes",
     "extra": {
       "eas": {
         "projectId": "8ace998d-2278-4b5d-b0d5-32e30581178d"
