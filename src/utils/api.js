@@ -69,3 +69,41 @@ export function sendMessageStream(text, sessionId, onChunk, onDone, onError) {
 
   return () => xhr.abort();
 }
+
+// ─── 多媒体上传 ────────────────────────────────────────────
+
+/**
+ * 上传图片到后端
+ * @param {string} uri - 图片本地 URI
+ * @returns {Promise<object>} 响应 JSON（含 url / extracted_text 等）
+ */
+export async function uploadImage(uri) {
+  const formData = new FormData();
+  formData.append('file', { uri, type: 'image/jpeg', name: 'photo.jpg' });
+  const res = await fetch('http://8.163.2.252/app-api/upload/image', {
+    method: 'POST',
+    body: formData,
+  });
+  return res.json();
+}
+
+/**
+ * 上传文件到后端
+ * @param {string} uri       - 文件本地 URI
+ * @param {string} fileName  - 原始文件名
+ * @param {string} mimeType  - MIME 类型（可选）
+ * @returns {Promise<object>} 响应 JSON
+ */
+export async function uploadFile(uri, fileName, mimeType) {
+  const formData = new FormData();
+  formData.append('file', {
+    uri,
+    type: mimeType || 'application/octet-stream',
+    name: fileName,
+  });
+  const res = await fetch('http://8.163.2.252/app-api/upload/file', {
+    method: 'POST',
+    body: formData,
+  });
+  return res.json();
+}

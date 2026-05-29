@@ -1,4 +1,4 @@
-// 聊天页面 —— 收发消息、流式响应
+// 聊天页面 —— 收发消息、流式响应、多媒体支持
 import React, { useState, useRef, useCallback, useLayoutEffect } from 'react';
 import {
   View,
@@ -9,12 +9,17 @@ import {
   KeyboardAvoidingView,
   Platform,
   StyleSheet,
+  Alert,
 } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
+import * as DocumentPicker from 'expo-document-picker';
+import { Audio } from 'expo-av';
 import { Colors } from '../colors';
 import { loadConversations, saveConversations } from '../utils/storage';
-import { sendMessageStream } from '../utils/api';
+import { sendMessageStream, uploadImage, uploadFile } from '../utils/api';
 import MessageBubble from '../components/MessageBubble';
 import EmptyState from '../components/EmptyState';
+import AttachMenu from '../components/AttachMenu';
 
 export default function ChatScreen({ route, navigation }) {
   const { conversationId } = route.params;
@@ -24,10 +29,12 @@ export default function ChatScreen({ route, navigation }) {
   const [isStreaming, setIsStreaming] = useState(false); // 是否正在接收流
   const [sessionId, setSessionId] = useState('');       // 后端 sid
   const [convTitle, setConvTitle] = useState('新对话');  // 会话标题
+  const [attachVisible, setAttachVisible] = useState(false); // 附件菜单
 
   const flatListRef = useRef(null);
   const abortRef = useRef(null);           // 取消请求的函数
   const messagesRef = useRef([]);          // 最新消息引用（避免闭包旧值）
+  const recordingRef = useRef(null);       // Audio.Recording 实例
 
   // 加载该会话的历史消息
   const loadMessages = useCallback(async () => {
@@ -74,10 +81,11 @@ export default function ChatScreen({ route, navigation }) {
     loadMessages();
   }, [loadMessages]);
 
-  // 页面销毁时取消请求
+  // 页面销毁时取消请求 + 停止录音
   React.useEffect(() => {
     return () => {
       abortRef.current?.();
+      recordingRef.current?.stopAndUnloadAsync?.();
     };
   }, []);
 
@@ -95,26 +103,17 @@ export default function ChatScreen({ route, navigation }) {
     });
   }, [navigation]);
 
-  // 发送消息
-  const handleSend = () => {
-    const text = inputText.trim();
-    if (!text || isStreaming) return;
+  // ─── 多媒体处理 ───────────────────────────────────────
 
-    // 1. 添加用户消息
-    const userMsg = {
-      id: 'u_' + Date.now(),
-      role: 'user',
-      text,
-      timestamp: Date.now(),
-    };
+  /** 发送一条用户消息 + 一条 bot 占位消息，然后走 SSE */
+  const sendToAI = (userMsg) => {
     const withUser = [...messagesRef.current, userMsg];
     setMessages(withUser);
     messagesRef.current = withUser;
-    setInputText('');
     persistMessages(withUser);
     scrollToBottom();
 
-    // 2. 添加占位 bot 消息（思考中）
+    // 添加占位 bot 消息
     const botMsg = {
       id: 'b_' + Date.now(),
       role: 'hermes',
@@ -126,17 +125,15 @@ export default function ChatScreen({ route, navigation }) {
     messagesRef.current = withBot;
     setIsStreaming(true);
 
-    // 3. 发起 SSE 流式请求
+    const textToSend = userMsg.text;
+
     abortRef.current = sendMessageStream(
-      text,
+      textToSend,
       sessionId,
-      // onChunk
       (chunk) => {
-        // 记录后端 sid
         if (chunk.sid && !sessionId) {
           setSessionId(chunk.sid);
         }
-        // 累加文本
         if (chunk.text) {
           const msgs = [...messagesRef.current];
           const last = msgs[msgs.length - 1];
@@ -147,15 +144,12 @@ export default function ChatScreen({ route, navigation }) {
           }
         }
       },
-      // onDone
       async () => {
         setIsStreaming(false);
         abortRef.current = null;
-        // 流结束后的最终保存
         const msgs = [...messagesRef.current];
         await persistMessages(msgs);
       },
-      // onError
       (error) => {
         setIsStreaming(false);
         abortRef.current = null;
@@ -173,6 +167,169 @@ export default function ChatScreen({ route, navigation }) {
     scrollToBottom();
   };
 
+  /** 附件菜单回调 */
+  const handleAttachSelect = async (key) => {
+    switch (key) {
+      case 'gallery': {
+        const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (!perm.granted) {
+          Alert.alert('权限不足', '需要相册权限才能选择图片');
+          return;
+        }
+        const result = await ImagePicker.launchImageLibraryAsync({
+          mediaTypes: ['images'],
+          quality: 0.8,
+        });
+        if (result.canceled || !result.assets?.length) return;
+        const uri = result.assets[0].uri;
+        try {
+          const uploadRes = await uploadImage(uri);
+          const userMsg = {
+            id: 'u_' + Date.now(),
+            role: 'user',
+            text: '[用户发送了一张图片]',
+            imageUri: uri,
+            timestamp: Date.now(),
+            uploadData: uploadRes,
+          };
+          sendToAI(userMsg);
+        } catch (e) {
+          Alert.alert('上传失败', e.message || '网络错误');
+        }
+        break;
+      }
+
+      case 'camera': {
+        const perm = await ImagePicker.requestCameraPermissionsAsync();
+        if (!perm.granted) {
+          Alert.alert('权限不足', '需要相机权限才能拍照');
+          return;
+        }
+        const result = await ImagePicker.launchCameraAsync({
+          quality: 0.8,
+        });
+        if (result.canceled || !result.assets?.length) return;
+        const uri = result.assets[0].uri;
+        try {
+          const uploadRes = await uploadImage(uri);
+          const userMsg = {
+            id: 'u_' + Date.now(),
+            role: 'user',
+            text: '[用户发送了一张图片]',
+            imageUri: uri,
+            timestamp: Date.now(),
+            uploadData: uploadRes,
+          };
+          sendToAI(userMsg);
+        } catch (e) {
+          Alert.alert('上传失败', e.message || '网络错误');
+        }
+        break;
+      }
+
+      case 'file': {
+        try {
+          const result = await DocumentPicker.getDocumentAsync({
+            copyToCacheDirectory: true,
+          });
+          if (result.canceled || !result.assets?.length) return;
+          const file = result.assets[0];
+          const uploadRes = await uploadFile(
+            file.uri,
+            file.name || 'file',
+            file.mimeType
+          );
+          const fallbackText = uploadRes?.extracted_text || '[用户发送了一个文件]';
+          const userMsg = {
+            id: 'u_' + Date.now(),
+            role: 'user',
+            text: fallbackText,
+            file: { name: file.name || '未知文件', size: file.size || 0 },
+            timestamp: Date.now(),
+            uploadData: uploadRes,
+          };
+          sendToAI(userMsg);
+        } catch (e) {
+          Alert.alert('上传失败', e.message || '网络错误');
+        }
+        break;
+      }
+
+      case 'audio': {
+        try {
+          const perm = await Audio.requestPermissionsAsync();
+          if (!perm.granted) {
+            Alert.alert('权限不足', '需要麦克风权限才能录音');
+            return;
+          }
+          await Audio.setAudioModeAsync({
+            allowsRecordingIOS: true,
+            playsInSilentModeIOS: true,
+          });
+          const { recording } = await Audio.Recording.createAsync(
+            Audio.RecordingOptionsPresets.HIGH_QUALITY
+          );
+          recordingRef.current = recording;
+
+          Alert.alert(
+            '录音中',
+            '点击确定结束录音',
+            [
+              { text: '停止录音', onPress: async () => {
+                try {
+                  await recording.stopAndUnloadAsync();
+                  const uri = recording.getURI();
+                  const status = await recording.getStatusAsync();
+                  recordingRef.current = null;
+
+                  const durationSec = Math.round(status.durationMillis / 1000);
+                  const userMsg = {
+                    id: 'u_' + Date.now(),
+                    role: 'user',
+                    text: `[语音消息]`,
+                    audio: { uri, duration: durationSec },
+                    timestamp: Date.now(),
+                  };
+                  // 语音暂时只做本地展示，不发给 AI（可后续扩展）
+                  const withUser = [...messagesRef.current, userMsg];
+                  setMessages(withUser);
+                  messagesRef.current = withUser;
+                  persistMessages(withUser);
+                  scrollToBottom();
+                } catch (err) {
+                  Alert.alert('录音出错', err.message);
+                }
+              }}
+            ],
+            { cancelable: false }
+          );
+        } catch (e) {
+          Alert.alert('录音失败', e.message || '无法启动录音');
+        }
+        break;
+      }
+
+      default:
+        break;
+    }
+  };
+
+  // ─── 文字发送 ───────────────────────────────────────
+
+  const handleSend = () => {
+    const text = inputText.trim();
+    if (!text || isStreaming) return;
+
+    const userMsg = {
+      id: 'u_' + Date.now(),
+      role: 'user',
+      text,
+      timestamp: Date.now(),
+    };
+    setInputText('');
+    sendToAI(userMsg);
+  };
+
   // 停止生成
   const handleStop = () => {
     abortRef.current?.();
@@ -186,31 +343,55 @@ export default function ChatScreen({ route, navigation }) {
     return <MessageBubble message={item} isThinking={isThinking} />;
   };
 
-  // 空状态
+  // ─── 输入栏（共用） ─────────────────────────────────
+  const renderInputBar = () => (
+    <View style={styles.inputBar}>
+      {/* ➕ 附件按钮 */}
+      <TouchableOpacity
+        style={styles.attachBtn}
+        onPress={() => setAttachVisible(true)}
+        activeOpacity={0.7}
+      >
+        <Text style={styles.attachBtnText}>＋</Text>
+      </TouchableOpacity>
+
+      <TextInput
+        style={styles.textInput}
+        placeholder="输入消息…"
+        placeholderTextColor={Colors.sub}
+        value={inputText}
+        onChangeText={setInputText}
+        multiline
+        maxLength={4000}
+        editable={!isStreaming}
+      />
+      {isStreaming ? (
+        <TouchableOpacity style={styles.stopBtn} onPress={handleStop}>
+          <Text style={styles.stopBtnText}>■</Text>
+        </TouchableOpacity>
+      ) : (
+        <TouchableOpacity
+          style={[styles.sendBtn, !inputText.trim() && styles.sendBtnDisabled]}
+          onPress={handleSend}
+          disabled={!inputText.trim()}
+        >
+          <Text style={styles.sendBtnText}>↑</Text>
+        </TouchableOpacity>
+      )}
+    </View>
+  );
+
+  // ─── 空状态 ─────────────────────────────────────────
   if (messages.length === 0) {
     return (
       <View style={styles.container}>
         <EmptyState icon="⚕️" title="Hermes" subtitle="有什么可以帮你？" />
-        {/* 底部输入栏 */}
-        <View style={styles.inputBar}>
-          <TextInput
-            style={styles.textInput}
-            placeholder="输入消息…"
-            placeholderTextColor={Colors.sub}
-            value={inputText}
-            onChangeText={setInputText}
-            multiline
-            maxLength={4000}
-            editable={!isStreaming}
-          />
-          <TouchableOpacity
-            style={[styles.sendBtn, !inputText.trim() && styles.sendBtnDisabled]}
-            onPress={handleSend}
-            disabled={!inputText.trim()}
-          >
-            <Text style={styles.sendBtnText}>↑</Text>
-          </TouchableOpacity>
-        </View>
+        {renderInputBar()}
+        <AttachMenu
+          visible={attachVisible}
+          onClose={() => setAttachVisible(false)}
+          onSelect={handleAttachSelect}
+        />
       </View>
     );
   }
@@ -232,32 +413,13 @@ export default function ChatScreen({ route, navigation }) {
         onLayout={scrollToBottom}
       />
 
-      {/* 底部输入栏 */}
-      <View style={styles.inputBar}>
-        <TextInput
-          style={styles.textInput}
-          placeholder="输入消息…"
-          placeholderTextColor={Colors.sub}
-          value={inputText}
-          onChangeText={setInputText}
-          multiline
-          maxLength={4000}
-          editable={!isStreaming}
-        />
-        {isStreaming ? (
-          <TouchableOpacity style={styles.stopBtn} onPress={handleStop}>
-            <Text style={styles.stopBtnText}>■</Text>
-          </TouchableOpacity>
-        ) : (
-          <TouchableOpacity
-            style={[styles.sendBtn, !inputText.trim() && styles.sendBtnDisabled]}
-            onPress={handleSend}
-            disabled={!inputText.trim()}
-          >
-            <Text style={styles.sendBtnText}>↑</Text>
-          </TouchableOpacity>
-        )}
-      </View>
+      {renderInputBar()}
+
+      <AttachMenu
+        visible={attachVisible}
+        onClose={() => setAttachVisible(false)}
+        onSelect={handleAttachSelect}
+      />
     </KeyboardAvoidingView>
   );
 }
@@ -277,9 +439,25 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.card,
     borderTopWidth: 1,
     borderTopColor: Colors.border,
-    paddingHorizontal: 12,
+    paddingHorizontal: 10,
     paddingVertical: 8,
     paddingBottom: 16,
+    gap: 8,
+  },
+  attachBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: Colors.botBubble,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  attachBtnText: {
+    color: Colors.sub,
+    fontSize: 22,
+    lineHeight: 24,
   },
   textInput: {
     flex: 1,
@@ -300,7 +478,6 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.accent,
     justifyContent: 'center',
     alignItems: 'center',
-    marginLeft: 8,
   },
   sendBtnDisabled: {
     backgroundColor: Colors.border,
@@ -317,7 +494,6 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.danger,
     justifyContent: 'center',
     alignItems: 'center',
-    marginLeft: 8,
   },
   stopBtnText: {
     color: '#fff',

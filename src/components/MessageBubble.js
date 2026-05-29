@@ -1,4 +1,4 @@
-// 消息气泡 —— 用户紫色靠右，Hermes 深灰靠左
+// 消息气泡 —— 支持文字、图片、文件、语音
 import React from 'react';
 import {
   View,
@@ -11,10 +11,16 @@ import {
 import { TouchableOpacity } from 'react-native';
 import { Colors } from '../colors';
 import { formatTime } from '../utils/time';
+import ImageBubble from './ImageBubble';
+import FileBubble from './FileBubble';
 
 /**
  * MessageBubble
- * @param {object} message    - { id, role, text, timestamp }
+ * @param {object} message
+ *   - 纯文字：{ id, role, text, timestamp }
+ *   - 图片：   { id, role, text, timestamp, imageUri }
+ *   - 文件：   { id, role, text, timestamp, file: { name, size } }
+ *   - 语音：   { id, role, text, timestamp, audio: { uri, duration } }
  * @param {boolean} isThinking - 是否正在思考中（显示转圈动画）
  */
 export default function MessageBubble({ message, isThinking = false }) {
@@ -33,6 +39,48 @@ export default function MessageBubble({ message, isThinking = false }) {
   // 时间 HH:mm
   const timeStr = timestamp ? formatTime(timestamp) : '';
 
+  // ─── 多媒体内容渲染 ──────────────────────────────────
+
+  const renderContent = () => {
+    // 图片
+    if (message.imageUri) {
+      return <ImageBubble imageUri={message.imageUri} />;
+    }
+    // 文件
+    if (message.file) {
+      return <FileBubble file={message.file} />;
+    }
+    // 语音
+    if (message.audio) {
+      const { duration } = message.audio;
+      return (
+        <View style={styles.audioRow}>
+          <Text style={styles.audioIcon}>🎤</Text>
+          <Text style={styles.audioText}>
+            语音消息{duration != null ? ` (${duration}秒)` : ''}
+          </Text>
+        </View>
+      );
+    }
+    // 纯文字
+    if (isThinking) {
+      return (
+        <View style={styles.thinkingRow}>
+          <ActivityIndicator size="small" color={Colors.sub} />
+          <Text style={styles.thinkingText}>思考中…</Text>
+        </View>
+      );
+    }
+    return (
+      <Text style={[styles.text, isUser ? styles.textUser : styles.textHermes]}>
+        {text}
+      </Text>
+    );
+  };
+
+  // 只有纯文字消息才支持长按复制
+  const hasMedia = !!(message.imageUri || message.file || message.audio);
+
   return (
     <View style={[styles.row, isUser ? styles.rowRight : styles.rowLeft]}>
       {/* 气泡 */}
@@ -40,22 +88,14 @@ export default function MessageBubble({ message, isThinking = false }) {
         style={[
           styles.bubble,
           isUser ? styles.bubbleUser : styles.bubbleHermes,
+          hasMedia && styles.bubbleMedia, // 多媒体气泡无内边距
         ]}
         activeOpacity={0.8}
-        onLongPress={handleLongPress}
+        onLongPress={hasMedia ? undefined : handleLongPress}
         delayLongPress={400}
+        disabled={hasMedia}
       >
-        {isThinking ? (
-          // 思考中：转圈动画
-          <View style={styles.thinkingRow}>
-            <ActivityIndicator size="small" color={Colors.sub} />
-            <Text style={styles.thinkingText}>思考中…</Text>
-          </View>
-        ) : (
-          <Text style={[styles.text, isUser ? styles.textUser : styles.textHermes]}>
-            {text}
-          </Text>
-        )}
+        {renderContent()}
       </TouchableOpacity>
 
       {/* 时间（气泡下方） */}
@@ -98,6 +138,14 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.botBubble,
     borderBottomLeftRadius: 4,
   },
+  bubbleMedia: {
+    paddingHorizontal: 0,
+    paddingVertical: 0,
+    backgroundColor: 'transparent',
+    borderBottomRightRadius: 12,
+    borderBottomLeftRadius: 12,
+    overflow: 'visible',
+  },
 
   /* 文字 */
   text: {
@@ -120,6 +168,26 @@ const styles = StyleSheet.create({
   thinkingText: {
     fontSize: 14,
     color: Colors.sub,
+  },
+
+  /* 语音消息 */
+  audioRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    backgroundColor: Colors.userBubble,
+    borderRadius: 16,
+    borderBottomRightRadius: 4,
+  },
+  audioIcon: {
+    fontSize: 22,
+  },
+  audioText: {
+    fontSize: 14,
+    color: '#fff',
+    fontWeight: '500',
   },
 
   /* 时间 */
