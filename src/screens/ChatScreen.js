@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   Text,
   KeyboardAvoidingView,
+  Keyboard,
   Platform,
   StyleSheet,
   Alert,
@@ -41,6 +42,7 @@ export default function ChatScreen({ route, navigation }) {
   const messagesRef = useRef([]);          // 最新消息引用（避免闭包旧值）
   // [版本D] 恢复录音引用（handleAttachSelect 里用）
   const recordingRef = useRef(null);       // Audio.Recording 实例
+  const [keyboardHeight, setKeyboardHeight] = useState(0); // 键盘高度
 
   // 加载该会话的历史消息
   const loadMessages = useCallback(async () => {
@@ -86,6 +88,25 @@ export default function ChatScreen({ route, navigation }) {
   React.useEffect(() => {
     loadMessages();
   }, [loadMessages]);
+
+  // 键盘监听 —— Android 上动态调整输入栏位置
+  React.useEffect(() => {
+    const showSub = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+      (e) => {
+        setKeyboardHeight(e.endCoordinates.height);
+        scrollToBottom();
+      }
+    );
+    const hideSub = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+      () => setKeyboardHeight(0)
+    );
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
   // 页面销毁时取消请求 + 停止录音
   React.useEffect(() => {
@@ -356,7 +377,7 @@ export default function ChatScreen({ route, navigation }) {
 
   // ─── 输入栏（共用） ─────────────────────────────────
   const renderInputBar = () => (
-    <View style={styles.inputBar}>
+    <View style={[styles.inputBar, { paddingBottom: keyboardHeight > 0 ? keyboardHeight + 8 : 16 }]}>
       {/* [版本D] ➕ 附件按钮已恢复 */}
       <TouchableOpacity
         style={styles.attachBtn}
@@ -395,7 +416,11 @@ export default function ChatScreen({ route, navigation }) {
   // ─── 空状态 ─────────────────────────────────────────
   if (messages.length === 0) {
     return (
-      <View style={styles.container}>
+      <KeyboardAvoidingView
+        style={styles.container}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+      >
         <EmptyState icon="⚕️" title="Hermes" subtitle="有什么可以帮你？" />
         {renderInputBar()}
         {/* [版本D] AttachMenu 已恢复 */}
@@ -404,14 +429,14 @@ export default function ChatScreen({ route, navigation }) {
           onClose={() => setAttachVisible(false)}
           onSelect={handleAttachSelect}
         />
-      </View>
+      </KeyboardAvoidingView>
     );
   }
 
   return (
     <KeyboardAvoidingView
       style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
     >
       <FlatList
