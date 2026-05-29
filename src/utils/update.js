@@ -1,6 +1,6 @@
 // 版本检查工具 —— 启动时自动检测更新
 const VERSION_API = 'http://8.163.2.252/app-api/version';
-const APP_VERSION_CODE = 6; // 随每次发布递增
+const APP_VERSION_CODE = 7; // 随每次发布递增
 
 /**
  * 检查是否有新版本
