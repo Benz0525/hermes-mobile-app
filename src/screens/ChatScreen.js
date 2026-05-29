@@ -414,13 +414,14 @@ export default function ChatScreen({ route, navigation }) {
   );
 
   // ─── 空状态 ─────────────────────────────────────────
+
+  // Android: pan 模式系统自动平移窗口，不需要 KeyboardAvoidingView
+  const ContainerView = Platform.OS === 'ios' ? KeyboardAvoidingView : View;
+  const containerProps = Platform.OS === 'ios' ? { behavior: 'padding', keyboardVerticalOffset: 90 } : {};
+
   if (messages.length === 0) {
     return (
-      <KeyboardAvoidingView
-        style={styles.container}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
-      >
+      <ContainerView style={styles.container} {...containerProps}>
         {keyboardHeight > 0 ? (
           // 键盘弹出时 —— 紧凑模式
           <View style={styles.emptyCompact}>
@@ -440,16 +441,12 @@ export default function ChatScreen({ route, navigation }) {
           onClose={() => setAttachVisible(false)}
           onSelect={handleAttachSelect}
         />
-      </KeyboardAvoidingView>
+      </ContainerView>
     );
   }
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
-    >
+    <ContainerView style={styles.container} {...containerProps}>
       <FlatList
         ref={flatListRef}
         data={messages}
@@ -469,7 +466,7 @@ export default function ChatScreen({ route, navigation }) {
         onClose={() => setAttachVisible(false)}
         onSelect={handleAttachSelect}
       />
-    </KeyboardAvoidingView>
+    </ContainerView>
   );
 }
 
