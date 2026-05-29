@@ -11,8 +11,9 @@ import {
 import { TouchableOpacity } from 'react-native';
 import { Colors } from '../colors';
 import { formatTime } from '../utils/time';
-import ImageBubble from './ImageBubble';
-import FileBubble from './FileBubble';
+// [版本B] 注释掉多媒体气泡组件
+// import ImageBubble from './ImageBubble';
+// import FileBubble from './FileBubble';
 
 /**
  * MessageBubble
@@ -42,6 +43,8 @@ export default function MessageBubble({ message, isThinking = false }) {
   // ─── 多媒体内容渲染 ──────────────────────────────────
 
   const renderContent = () => {
+    // [版本B] 图片/文件气泡已注释
+    /*
     // 图片
     if (message.imageUri) {
       return <ImageBubble imageUri={message.imageUri} />;
@@ -50,6 +53,7 @@ export default function MessageBubble({ message, isThinking = false }) {
     if (message.file) {
       return <FileBubble file={message.file} />;
     }
+    */
     // 语音
     if (message.audio) {
       const { duration } = message.audio;
@@ -78,8 +82,8 @@ export default function MessageBubble({ message, isThinking = false }) {
     );
   };
 
-  // 只有纯文字消息才支持长按复制
-  const hasMedia = !!(message.imageUri || message.file || message.audio);
+  // [版本B] 只有音频算多媒体（图片/文件已注释）
+  const hasMedia = !!message.audio;
 
   return (
     <View style={[styles.row, isUser ? styles.rowRight : styles.rowLeft]}>
