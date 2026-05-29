@@ -377,7 +377,7 @@ export default function ChatScreen({ route, navigation }) {
 
   // ─── 输入栏（共用） ─────────────────────────────────
   const renderInputBar = () => (
-    <View style={[styles.inputBar, { paddingBottom: keyboardHeight > 0 ? keyboardHeight + 8 : 16 }]}>
+    <View style={[styles.inputBar, { paddingBottom: 8 }]}>
       {/* [版本D] ➕ 附件按钮已恢复 */}
       <TouchableOpacity
         style={styles.attachBtn}
