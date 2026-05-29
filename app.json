@@ -25,12 +25,14 @@
     },
     "plugins": [
       "expo-status-bar",
-      "./plugins/withNetworkSecurityConfig",
-      ["expo-build-properties", {
-        "android": {
-          "usesCleartextTraffic": true
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": true
+          }
         }
-      }]
+      ]
     ],
     "newArchEnabled": false,
     "jsEngine": "hermes",
