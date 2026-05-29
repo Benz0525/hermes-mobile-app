@@ -30,13 +30,13 @@
         {
           "android": {
             "usesCleartextTraffic": true,
-            "softwareKeyboardLayoutMode": "pan"
+            "softwareKeyboardLayoutMode": "resize"
           }
         }
       ],
       [
         "./plugins/withWindowSoftInputMode",
-        "adjustPan"
+        "adjustResize"
       ]
     ],
     "newArchEnabled": false,

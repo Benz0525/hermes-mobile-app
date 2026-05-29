@@ -2,7 +2,7 @@
 // 绕过 expo-build-properties 的已知 bug (issue #19088)
 const { withAndroidManifest } = require('@expo/config-plugins');
 
-function withWindowSoftInputMode(config, mode = 'adjustPan') {
+function withWindowSoftInputMode(config, mode = 'adjustResize') {
   return withAndroidManifest(config, async (config) => {
     const manifest = config.modResults.manifest;
     

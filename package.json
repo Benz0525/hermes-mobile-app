@@ -1,6 +1,6 @@
 {
   "name": "hermes-mobile-app",
-  "version": "1.0.0",
+  "version": "4.1.0-alpha",
   "main": "index.js",
   "dependencies": {
     "@react-native-async-storage/async-storage": "^3.1.0",
