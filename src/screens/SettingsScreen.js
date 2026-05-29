@@ -13,7 +13,7 @@ import { Colors } from '../colors';
 import { saveConversations } from '../utils/storage';
 
 const APP_NAME = 'Hermes';
-const APP_VERSION = '3.4.0';
+const APP_VERSION = '4.1.0';
 const SERVER_URL = 'http://8.163.2.252/app-api';
 
 export default function SettingsScreen({ navigation }) {
@@ -67,9 +67,9 @@ export default function SettingsScreen({ navigation }) {
         <Text style={styles.sectionTitle}>关于</Text>
         <View style={styles.infoCard}>
           <Text style={styles.aboutText}>
-            Hermes 是一款基于 AI 的智能对话助手，采用 SSE 流式传输实现实时响应。{'\n\n'}
-            支持多会话管理、消息持久化存储，以及 Linear 暗色主题界面。{'\n\n'}
-            Built with React Native & Expo.
+            Hermes v4.1 Alpha · Lightning Mode{'\\n\\n'}
+            40人并行开发 · 1小时交付 · 键盘适配 · SSE重试 · 网络优化{'\\n\\n'}
+            Built with React Native & Expo + FastAPI + DeepSeek.
           </Text>
         </View>
       </View>

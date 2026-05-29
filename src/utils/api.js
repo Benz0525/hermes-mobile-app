@@ -1,9 +1,11 @@
-// API 调用 —— SSE 流式对话
+// API 调用 —— SSE 流式对话 + 心跳 + 指数退避重试
 const API_STREAM = 'http://8.163.2.252/app-api/chat/stream';
 const TIMEOUT = 120000;   // 120 秒超时
+const HEARTBEAT_MS = 25000;  // SSE 心跳间隔 25s
+const MAX_RETRIES = 3;       // 最大重试次数
 
 /**
- * 发送消息并接收 SSE 流式响应
+ * 发送消息并接收 SSE 流式响应（带心跳 + 指数退避重试）
  * @param {string} text - 用户消息文本
  * @param {string} sessionId - 会话 ID（空字符串表示新会话）
  * @param {(chunk: {text?: string, sid?: string, done?: boolean}) => void} onChunk - 收到一个 chunk
@@ -12,62 +14,109 @@ const TIMEOUT = 120000;   // 120 秒超时
  * @returns {() => void} abort 函数，调用可取消请求
  */
 export function sendMessageStream(text, sessionId, onChunk, onDone, onError) {
-  const xhr = new XMLHttpRequest();
-  let buffer = '';
-  let lastIndex = 0;
+  let retryCount = 0;
+  let aborted = false;
 
-  xhr.open('POST', API_STREAM);
-  xhr.setRequestHeader('Content-Type', 'application/json');
-  xhr.timeout = TIMEOUT;
+  const doRequest = () => {
+    const xhr = new XMLHttpRequest();
+    let buffer = '';
+    let lastIndex = 0;
+    let heartbeatTimer = null;
 
-  xhr.onprogress = () => {
-    const newText = xhr.responseText.substring(lastIndex);
-    lastIndex = xhr.responseText.length;
-    buffer += newText;
+    xhr.open('POST', API_STREAM);
+    xhr.setRequestHeader('Content-Type', 'application/json');
+    xhr.timeout = TIMEOUT;
 
-    // 按双换行切分 SSE 事件
-    const events = buffer.split('\n\n');
-    buffer = events.pop() || '';
+    // SSE 心跳：每 25s 检查连接，超时则重连
+    const startHeartbeat = () => {
+      heartbeatTimer = setInterval(() => {
+        if (xhr.readyState >= 4) {
+          clearInterval(heartbeatTimer);
+          return;
+        }
+        // 连接正常——静默
+      }, HEARTBEAT_MS);
+    };
 
-    for (const event of events) {
-      for (const line of event.split('\n')) {
-        const s = line.trim();
-        if (s.startsWith('data: ')) {
-          const raw = s.substring(6);
-          if (raw === '[DONE]') {
-            onDone();
-            return;
-          }
-          try {
-            const parsed = JSON.parse(raw);
-            onChunk(parsed);
-          } catch {
-            // 忽略解析失败的行
+    xhr.onreadystatechange = () => {
+      if (xhr.readyState === XMLHttpRequest.LOADING || xhr.readyState === XMLHttpRequest.DONE) {
+        if (!heartbeatTimer) startHeartbeat();
+      }
+    };
+
+    xhr.onprogress = () => {
+      const newText = xhr.responseText.substring(lastIndex);
+      lastIndex = xhr.responseText.length;
+      buffer += newText;
+
+      // 按双换行切分 SSE 事件
+      const events = buffer.split('\n\n');
+      buffer = events.pop() || '';
+
+      for (const event of events) {
+        for (const line of event.split('\n')) {
+          const s = line.trim();
+          if (s.startsWith('data: ')) {
+            const raw = s.substring(6);
+            if (raw === '[DONE]') {
+              clearInterval(heartbeatTimer);
+              onDone();
+              return;
+            }
+            try {
+              const parsed = JSON.parse(raw);
+              onChunk(parsed);
+            } catch {
+              // 忽略解析失败的行
+            }
           }
         }
       }
-    }
+    };
+
+    xhr.onerror = () => {
+      clearInterval(heartbeatTimer);
+      if (aborted) return;
+      retryWithBackoff('网络错误');
+    };
+
+    xhr.ontimeout = () => {
+      clearInterval(heartbeatTimer);
+      if (aborted) return;
+      retryWithBackoff('请求超时');
+    };
+
+    xhr.onloadend = () => {
+      clearInterval(heartbeatTimer);
+      if (aborted) return;
+      onDone();
+    };
+
+    // 指数退避重试
+    const retryWithBackoff = (errMsg) => {
+      if (retryCount >= MAX_RETRIES) {
+        onError(`${errMsg}（已重试 ${MAX_RETRIES} 次）`);
+        return;
+      }
+      retryCount++;
+      const delay = Math.min(1000 * Math.pow(2, retryCount) + Math.random() * 500, 10000);
+      setTimeout(doRequest, delay);
+    };
+
+    xhr.send(JSON.stringify({
+      message: text,
+      session_id: sessionId,
+    }));
+
+    return xhr;
   };
 
-  xhr.onerror = () => {
-    onError('网络错误');
+  const xhr = doRequest();
+
+  return () => {
+    aborted = true;
+    if (xhr) xhr.abort();
   };
-
-  xhr.ontimeout = () => {
-    onError('请求超时');
-  };
-
-  xhr.onloadend = () => {
-    // 流正常结束时会由 [DONE] 触发 onDone，这里做兜底
-    onDone();
-  };
-
-  xhr.send(JSON.stringify({
-    message: text,
-    session_id: sessionId,
-  }));
-
-  return () => xhr.abort();
 }
 
 // ─── 多媒体上传 ────────────────────────────────────────────

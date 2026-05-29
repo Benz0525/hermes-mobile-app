@@ -1,6 +1,6 @@
-// App 入口 —— 导航容器 + 深色主题 + OTA升级
-import React, { useEffect, useState, useRef } from 'react';
-import { Alert, Linking, Text, View, ActivityIndicator } from 'react-native';
+// App 入口 —— 导航容器 + 深色主题 + OTA升级 + 错误兜底
+import React, { useEffect, useState, useRef, Component } from 'react';
+import { Alert, Linking, Text, View, ActivityIndicator, TouchableOpacity, StyleSheet } from 'react-native';
 import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { StatusBar } from 'expo-status-bar';
@@ -43,6 +43,51 @@ const screenOptions = {
     backgroundColor: Colors.bg,
   },
 };
+
+// 错误边界 —— v4.1 兜底：APP不崩溃，显示错误信息 + 重启按钮
+class ErrorBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+
+  handleRestart = () => {
+    this.setState({ hasError: false, error: null });
+  };
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <View style={{ flex: 1, backgroundColor: Colors.bg, justifyContent: 'center', alignItems: 'center', padding: 32 }}>
+          <Text style={{ fontSize: 48, marginBottom: 16 }}>⚠️</Text>
+          <Text style={{ color: Colors.text, fontSize: 18, fontWeight: '600', marginBottom: 8 }}>
+            出现了一些问题
+          </Text>
+          <Text style={{ color: Colors.sub, fontSize: 14, textAlign: 'center', marginBottom: 24 }}>
+            {String(this.state.error?.message || this.state.error || '未知错误')}
+          </Text>
+          <TouchableOpacity
+            onPress={this.handleRestart}
+            style={{
+              backgroundColor: Colors.accent, paddingHorizontal: 32, paddingVertical: 12,
+              borderRadius: 10, marginBottom: 16,
+            }}
+          >
+            <Text style={{ color: '#fff', fontSize: 15, fontWeight: '600' }}>重新加载</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => Linking.openURL('http://8.163.2.252/hermes-chat.apk')}>
+            <Text style={{ color: Colors.sub, fontSize: 13 }}>下载最新APK</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 export default function App() {
   const [downloadPct, setDownloadPct] = useState(0);
@@ -101,6 +146,7 @@ export default function App() {
   };
 
   return (
+    <ErrorBoundary>
     <>
       <StatusBar style="light" />
       {/* 下载进度遮罩 */}
@@ -162,5 +208,6 @@ export default function App() {
         </Stack.Navigator>
       </NavigationContainer>
     </>
+    </ErrorBoundary>
   );
 }

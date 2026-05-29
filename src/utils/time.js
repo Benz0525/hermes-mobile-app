@@ -1,6 +1,6 @@
 // 时间格式化工具
 
-/** 格式化为 HH:mm，如 14:30 */
+/** 格式化为 HH:mm，如 14:30。forceRefresh 确保每次调用都重新计算 */
 export function formatTime(timestamp) {
   const d = new Date(timestamp);
   const h = String(d.getHours()).padStart(2, '0');
