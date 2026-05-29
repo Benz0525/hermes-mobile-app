@@ -25,6 +25,7 @@
     },
     "plugins": [
       "expo-status-bar",
+      "./plugins/withNetworkSecurityConfig",
       ["expo-build-properties", {
         "android": {
           "usesCleartextTraffic": true
