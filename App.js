@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 
 // ====== 配置 ======
-const API_URL = 'http://8.163.2.252/app-api/chat';
+const API_STREAM = 'http://8.163.2.252/app-api/chat/stream';
 
 // ====== 颜色 ======
 const C = {
@@ -28,40 +28,72 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [sessionId, setSessionId] = useState('');
   const flatListRef = useRef(null);
+  const streamRef = useRef(null); // 用于取消流式请求
 
-  const sendMessage = async () => {
+  const sendMessage = () => {
     const text = input.trim();
     if (!text || loading) return;
 
     const userMsg = { id: Date.now().toString(), role: 'user', text };
-    setMessages(prev => [...prev, userMsg]);
+    const botId = (Date.now() + 1).toString();
+    setMessages(prev => [...prev, userMsg, { id: botId, role: 'hermes', text: '' }]);
     setInput('');
     setLoading(true);
 
-    try {
-      const resp = await fetch(API_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text, session_id: sessionId }),
-      });
-      const data = await resp.json();
-      
-      if (data.session_id) setSessionId(data.session_id);
+    // 用 XMLHttpRequest 实现流式——React Native 最兼容的方式
+    const xhr = new XMLHttpRequest();
+    streamRef.current = xhr;
+    let lastIndex = 0;
+    let fullText = '';
 
-      setMessages(prev => [...prev, {
-        id: (Date.now() + 1).toString(),
-        role: 'hermes',
-        text: data.reply || '嗯...没想好 🤔',
-      }]);
-    } catch (e) {
-      setMessages(prev => [...prev, {
-        id: (Date.now() + 1).toString(),
-        role: 'hermes',
-        text: '连接失败，检查网络 😢',
-      }]);
-    }
-    setLoading(false);
+    xhr.open('POST', API_STREAM);
+    xhr.setRequestHeader('Content-Type', 'application/json');
+
+    xhr.onprogress = () => {
+      const newText = xhr.responseText.substring(lastIndex);
+      lastIndex = xhr.responseText.length;
+
+      // 解析SSE：按行分割，提取data字段
+      const lines = newText.split('\n');
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          try {
+            const data = JSON.parse(line.substring(6));
+            if (data.text) {
+              fullText += data.text;
+              setMessages(prev => prev.map(m =>
+                m.id === botId ? { ...m, text: fullText } : m
+              ));
+            }
+            if (data.sid) setSessionId(data.sid);
+            if (data.done) {
+              setLoading(false);
+            }
+          } catch (e) {}
+        }
+      }
+    };
+
+    xhr.onerror = () => {
+      setMessages(prev => prev.map(m =>
+        m.id === botId && !m.text ? { ...m, text: '连接失败 😢' } : m
+      ));
+      setLoading(false);
+    };
+
+    xhr.onloadend = () => {
+      setLoading(false);
+    };
+
+    xhr.send(JSON.stringify({ message: text, session_id: sessionId }));
   };
+
+  // 组件卸载时取消请求
+  useEffect(() => {
+    return () => {
+      if (streamRef.current) streamRef.current.abort();
+    };
+  }, []);
 
   useEffect(() => {
     setTimeout(() => {
@@ -81,7 +113,12 @@ export default function App() {
         <Text style={[
           styles.bubbleText,
           item.role === 'user' ? styles.bubbleTextUser : styles.bubbleTextHermes,
-        ]}>{item.text}</Text>
+        ]}>
+          {item.text}
+          {item.role === 'hermes' && !item.text && loading && (
+            <Text style={{ color: C.sub }}>...</Text>
+          )}
+        </Text>
       </View>
     </View>
   );
