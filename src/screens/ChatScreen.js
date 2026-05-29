@@ -416,7 +416,7 @@ export default function ChatScreen({ route, navigation }) {
   // ─── 空状态 ─────────────────────────────────────────
   if (messages.length === 0) {
     return (
-      <View style={styles.container}>
+      <View style={[styles.container, { paddingBottom: keyboardHeight }]}>
         {keyboardHeight > 0 ? (
           // 键盘弹出时 —— 紧凑模式
           <View style={styles.emptyCompact}>
@@ -441,7 +441,7 @@ export default function ChatScreen({ route, navigation }) {
   }
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingBottom: keyboardHeight }]}>
       <FlatList
         ref={flatListRef}
         data={messages}
@@ -483,8 +483,8 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: Colors.border,
     paddingHorizontal: 10,
-    paddingVertical: 8,
-    paddingBottom: 16,
+    paddingVertical: 6,
+    paddingBottom: 6,
     gap: 8,
   },
   attachBtn: {
