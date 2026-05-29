@@ -18,6 +18,7 @@ import * as DocumentPicker from 'expo-document-picker';
 import { Colors } from '../colors';
 import { loadConversations, saveConversations } from '../utils/storage';
 import { sendMessageStream, uploadImage, uploadFile } from '../utils/api';
+import { getAudio } from '../utils/audio';
 import MessageBubble from '../components/MessageBubble';
 import EmptyState from '../components/EmptyState';
 // [版本D] 恢复 AttachMenu
@@ -262,10 +263,9 @@ export default function ChatScreen({ route, navigation }) {
         break;
       }
 
-      // [版本D] 音频功能暂禁用 (expo-av 未安装)
-      /*
       case 'audio': {
         try {
+          const Audio = await getAudio();
           const perm = await Audio.requestPermissionsAsync();
           if (!perm.granted) {
             Alert.alert('权限不足', '需要麦克风权限才能录音');
@@ -316,7 +316,6 @@ export default function ChatScreen({ route, navigation }) {
         }
         break;
       }
-      */
 
       default:
         break;
@@ -409,7 +408,7 @@ export default function ChatScreen({ route, navigation }) {
   return (
     <KeyboardAvoidingView
       style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
     >
       <FlatList

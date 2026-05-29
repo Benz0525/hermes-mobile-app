@@ -1,9 +1,11 @@
 // App 入口 —— 导航容器 + 深色主题
-import React from 'react';
+import React, { useEffect } from 'react';
+import { Alert, Linking } from 'react-native';
 import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { StatusBar } from 'expo-status-bar';
 import { Colors } from './src/colors';
+import { checkUpdate } from './src/utils/update';
 
 import ChatListScreen from './src/screens/ChatListScreen';
 import ChatScreen from './src/screens/ChatScreen';
@@ -43,6 +45,25 @@ const screenOptions = {
 };
 
 export default function App() {
+  // 启动时检查更新
+  useEffect(() => {
+    checkUpdate().then(({ hasUpdate, info }) => {
+      if (hasUpdate && info) {
+        Alert.alert(
+          '发现新版本',
+          `${info.release_notes}\n\n是否前往下载？`,
+          [
+            { text: '稍后', style: 'cancel' },
+            {
+              text: '立即更新',
+              onPress: () => Linking.openURL(info.apk_url),
+            },
+          ]
+        );
+      }
+    });
+  }, []);
+
   return (
     <>
       <StatusBar style="light" />
