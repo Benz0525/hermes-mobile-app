@@ -428,7 +428,10 @@ export default function ChatScreen({ route, navigation }) {
           </View>
         ) : (
           // 键盘收起时 —— 完整空状态
-          <EmptyState icon="⚕️" title="Hermes" subtitle="有什么可以帮你？" />
+          <View style={styles.emptyFull}>
+            <EmptyState icon="⚕️" title="Hermes" subtitle="有什么可以帮你？" />
+            <Text style={styles.versionText}>v3.2</Text>
+          </View>
         )}
         {renderInputBar()}
         {/* [版本D] AttachMenu 已恢复 */}
@@ -564,5 +567,16 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '700',
     letterSpacing: 2,
+  },
+  emptyFull: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  versionText: {
+    color: Colors.sub,
+    fontSize: 12,
+    marginTop: -8,
+    opacity: 0.5,
   },
 });
