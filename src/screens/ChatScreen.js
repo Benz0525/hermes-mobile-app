@@ -448,6 +448,8 @@ export default function ChatScreen({ route, navigation }) {
         keyExtractor={(item) => item.id}
         renderItem={renderMessage}
         contentContainerStyle={styles.messageList}
+        style={{ flex: 1 }}
+        keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
         onContentSizeChange={scrollToBottom}
         onLayout={scrollToBottom}
