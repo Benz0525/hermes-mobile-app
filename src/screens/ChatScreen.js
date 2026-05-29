@@ -18,7 +18,8 @@ import * as DocumentPicker from 'expo-document-picker';
 import { Colors } from '../colors';
 import { loadConversations, saveConversations } from '../utils/storage';
 import { sendMessageStream, uploadImage, uploadFile } from '../utils/api';
-import { getAudio } from '../utils/audio';
+// expo-av 在部分设备上导致闪退，暂用懒加载（需进一步定位）
+// import { getAudio } from '../utils/audio';
 import MessageBubble from '../components/MessageBubble';
 import EmptyState from '../components/EmptyState';
 // [版本D] 恢复 AttachMenu
@@ -91,6 +92,7 @@ export default function ChatScreen({ route, navigation }) {
     return () => {
       abortRef.current?.();
       recordingRef.current?.stopAndUnloadAsync?.();
+      // expo-av 已移除，录音清理暂禁用
     };
   }, []);
 
@@ -262,7 +264,8 @@ export default function ChatScreen({ route, navigation }) {
         break;
       }
 
-      case 'audio': {
+      // expo-av 原生库在部分设备导致闪退，音频功能暂时禁用
+      /*
         try {
           const Audio = await getAudio();
           const perm = await Audio.requestPermissionsAsync();
@@ -315,6 +318,7 @@ export default function ChatScreen({ route, navigation }) {
         }
         break;
       }
+      */
 
       default:
         break;
