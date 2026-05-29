@@ -11,17 +11,17 @@ import {
   StyleSheet,
   Alert,
 } from 'react-native';
-// [版本B] 注释掉所有 expo 多媒体模块
-// import * as ImagePicker from 'expo-image-picker';
-// import * as DocumentPicker from 'expo-document-picker';
+// [版本D] 恢复图片+文件，音频仍禁用
+import * as ImagePicker from 'expo-image-picker';
+import * as DocumentPicker from 'expo-document-picker';
 // import { Audio } from 'expo-av';
 import { Colors } from '../colors';
 import { loadConversations, saveConversations } from '../utils/storage';
 import { sendMessageStream, uploadImage, uploadFile } from '../utils/api';
 import MessageBubble from '../components/MessageBubble';
 import EmptyState from '../components/EmptyState';
-// [版本B] 去掉 AttachMenu
-// import AttachMenu from '../components/AttachMenu';
+// [版本D] 恢复 AttachMenu
+import AttachMenu from '../components/AttachMenu';
 
 export default function ChatScreen({ route, navigation }) {
   const { conversationId } = route.params;
@@ -31,14 +31,14 @@ export default function ChatScreen({ route, navigation }) {
   const [isStreaming, setIsStreaming] = useState(false); // 是否正在接收流
   const [sessionId, setSessionId] = useState('');       // 后端 sid
   const [convTitle, setConvTitle] = useState('新对话');  // 会话标题
-  // [版本B] 去掉附件菜单状态
-  // const [attachVisible, setAttachVisible] = useState(false); // 附件菜单
+  // [版本D] 恢复附件菜单状态
+  const [attachVisible, setAttachVisible] = useState(false); // 附件菜单
 
   const flatListRef = useRef(null);
   const abortRef = useRef(null);           // 取消请求的函数
   const messagesRef = useRef([]);          // 最新消息引用（避免闭包旧值）
-  // [版本B] 去掉录音引用
-  // const recordingRef = useRef(null);       // Audio.Recording 实例
+  // [版本D] 恢复录音引用（handleAttachSelect 里用）
+  const recordingRef = useRef(null);       // Audio.Recording 实例
 
   // 加载该会话的历史消息
   const loadMessages = useCallback(async () => {
@@ -172,8 +172,7 @@ export default function ChatScreen({ route, navigation }) {
     scrollToBottom();
   };
 
-  /** [版本B] 附件菜单回调 —— 全部注释掉 */
-  /*
+  /** [版本D] 附件菜单回调 — 图片+文件已恢复，音频仍禁用 */
   const handleAttachSelect = async (key) => {
     switch (key) {
       case 'gallery': {
@@ -263,6 +262,8 @@ export default function ChatScreen({ route, navigation }) {
         break;
       }
 
+      // [版本D] 音频功能暂禁用 (expo-av 未安装)
+      /*
       case 'audio': {
         try {
           const perm = await Audio.requestPermissionsAsync();
@@ -298,7 +299,6 @@ export default function ChatScreen({ route, navigation }) {
                     audio: { uri, duration: durationSec },
                     timestamp: Date.now(),
                   };
-                  // 语音暂时只做本地展示，不发给 AI（可后续扩展）
                   const withUser = [...messagesRef.current, userMsg];
                   setMessages(withUser);
                   messagesRef.current = withUser;
@@ -316,12 +316,12 @@ export default function ChatScreen({ route, navigation }) {
         }
         break;
       }
+      */
 
       default:
         break;
     }
   };
-  */
 
   // ─── 文字发送 ───────────────────────────────────────
 
@@ -355,8 +355,7 @@ export default function ChatScreen({ route, navigation }) {
   // ─── 输入栏（共用） ─────────────────────────────────
   const renderInputBar = () => (
     <View style={styles.inputBar}>
-      {/* [版本B] ➕ 附件按钮已注释 */}
-      {/*
+      {/* [版本D] ➕ 附件按钮已恢复 */}
       <TouchableOpacity
         style={styles.attachBtn}
         onPress={() => setAttachVisible(true)}
@@ -364,7 +363,6 @@ export default function ChatScreen({ route, navigation }) {
       >
         <Text style={styles.attachBtnText}>＋</Text>
       </TouchableOpacity>
-      */}
 
       <TextInput
         style={styles.textInput}
@@ -398,14 +396,12 @@ export default function ChatScreen({ route, navigation }) {
       <View style={styles.container}>
         <EmptyState icon="⚕️" title="Hermes" subtitle="有什么可以帮你？" />
         {renderInputBar()}
-        {/* [版本B] AttachMenu 已注释 */}
-        {/*
+        {/* [版本D] AttachMenu 已恢复 */}
         <AttachMenu
           visible={attachVisible}
           onClose={() => setAttachVisible(false)}
           onSelect={handleAttachSelect}
         />
-        */}
       </View>
     );
   }
@@ -429,14 +425,12 @@ export default function ChatScreen({ route, navigation }) {
 
       {renderInputBar()}
 
-      {/* [版本B] AttachMenu 已注释 */}
-      {/*
+      {/* [版本D] AttachMenu 已恢复 */}
       <AttachMenu
         visible={attachVisible}
         onClose={() => setAttachVisible(false)}
         onSelect={handleAttachSelect}
       />
-      */}
     </KeyboardAvoidingView>
   );
 }
