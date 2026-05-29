@@ -6,6 +6,8 @@ import {
 
 // ====== 配置 ======
 const API_STREAM = 'http://8.163.2.252/app-api/chat/stream';
+const REQUEST_TIMEOUT = 120000; // P1-11: 2分钟超时
+const THROTTLE_MS = 50;        // P1-9: 50ms节流
 
 // ====== 颜色 ======
 const C = {
@@ -28,7 +30,16 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [sessionId, setSessionId] = useState('');
   const flatListRef = useRef(null);
-  const streamRef = useRef(null); // 用于取消流式请求
+  const streamRef = useRef(null);
+
+  const stopStream = () => {
+    // P1-8: 停止生成
+    if (streamRef.current) {
+      streamRef.current.abort();
+      streamRef.current = null;
+    }
+    setLoading(false);
+  };
 
   const sendMessage = () => {
     const text = input.trim();
@@ -40,48 +51,92 @@ export default function App() {
     setInput('');
     setLoading(true);
 
-    // 用 XMLHttpRequest 实现流式——React Native 最兼容的方式
     const xhr = new XMLHttpRequest();
     streamRef.current = xhr;
-    let lastIndex = 0;
+
+    // P1-5: SSE缓冲区——解决半行数据丢失
+    let buffer = '';
     let fullText = '';
+    let lastIndex = 0;
+    let lastUpdate = 0; // P1-9: 节流计时
 
     xhr.open('POST', API_STREAM);
     xhr.setRequestHeader('Content-Type', 'application/json');
+    xhr.timeout = REQUEST_TIMEOUT; // P1-11
 
     xhr.onprogress = () => {
       const newText = xhr.responseText.substring(lastIndex);
       lastIndex = xhr.responseText.length;
+      buffer += newText;
 
-      // 解析SSE：按行分割，提取data字段
-      const lines = newText.split('\n');
-      for (const line of lines) {
-        if (line.startsWith('data: ')) {
-          try {
-            const data = JSON.parse(line.substring(6));
-            if (data.text) {
-              fullText += data.text;
-              setMessages(prev => prev.map(m =>
-                m.id === botId ? { ...m, text: fullText } : m
-              ));
-            }
-            if (data.sid) setSessionId(data.sid);
-            if (data.done) {
+      // P1-5: 按完整事件（\n\n）分割，最后不完整的留到下次
+      const events = buffer.split('\n\n');
+      buffer = events.pop() || '';
+
+      for (const event of events) {
+        // 按行提取 data: 字段
+        for (const line of event.split('\n')) {
+          const trimmed = line.trim();
+          if (trimmed.startsWith('data: ')) {
+            const dataStr = trimmed.substring(6);
+            if (dataStr === '[DONE]') {
               setLoading(false);
+              return;
             }
-          } catch (e) {}
+            try {
+              const data = JSON.parse(dataStr);
+              if (data.text) {
+                fullText += data.text;
+
+                // P1-9: 节流——每50ms最多更新一次UI
+                const now = Date.now();
+                if (now - lastUpdate > THROTTLE_MS) {
+                  lastUpdate = now;
+                  setMessages(prev => prev.map(m =>
+                    m.id === botId ? { ...m, text: fullText } : m
+                  ));
+                }
+              }
+              if (data.sid) setSessionId(data.sid);
+              if (data.done) {
+                // 最后一次不丢
+                if (fullText) {
+                  setMessages(prev => prev.map(m =>
+                    m.id === botId ? { ...m, text: fullText } : m
+                  ));
+                }
+                setLoading(false);
+              }
+            } catch (e) {
+              console.warn('SSE解析失败:', dataStr.substring(0, 50), e); // P1-7
+            }
+          }
         }
       }
     };
 
     xhr.onerror = () => {
       setMessages(prev => prev.map(m =>
-        m.id === botId && !m.text ? { ...m, text: '连接失败 😢' } : m
+        m.id === botId && !m.text ? { ...m, text: '网络错误 😢' } : m
+      ));
+      setLoading(false);
+    };
+
+    xhr.ontimeout = () => {
+      // P1-11: 超时处理
+      setMessages(prev => prev.map(m =>
+        m.id === botId ? { ...m, text: fullText || '请求超时，请重试 ⏰' } : m
       ));
       setLoading(false);
     };
 
     xhr.onloadend = () => {
+      // P1-9: 确保最后一次更新不丢
+      if (fullText && loading) {
+        setMessages(prev => prev.map(m =>
+          m.id === botId ? { ...m, text: fullText } : m
+        ));
+      }
       setLoading(false);
     };
 
@@ -95,11 +150,12 @@ export default function App() {
     };
   }, []);
 
-  useEffect(() => {
+  // P1-15: 只用 onContentSizeChange，删掉重复的滚动监听
+  const scrollToEnd = () => {
     setTimeout(() => {
-      flatListRef.current?.scrollToEnd({ animated: true });
-    }, 100);
-  }, [messages]);
+      flatListRef.current?.scrollToEnd({ animated: false });
+    }, 50);
+  };
 
   const renderMessage = ({ item }) => (
     <View style={[
@@ -115,10 +171,14 @@ export default function App() {
           item.role === 'user' ? styles.bubbleTextUser : styles.bubbleTextHermes,
         ]}>
           {item.text}
-          {item.role === 'hermes' && !item.text && loading && (
-            <Text style={{ color: C.sub }}>...</Text>
-          )}
         </Text>
+        {/* P1-10: 用转圈+文字代替三个点 */}
+        {item.role === 'hermes' && !item.text && loading && (
+          <View style={styles.thinking}>
+            <ActivityIndicator size="small" color={C.sub} />
+            <Text style={styles.thinkingText}>思考中...</Text>
+          </View>
+        )}
       </View>
     </View>
   );
@@ -142,7 +202,8 @@ export default function App() {
         renderItem={renderMessage}
         style={styles.list}
         contentContainerStyle={styles.listContent}
-        onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
+        onContentSizeChange={scrollToEnd}
+        onLayout={scrollToEnd}
         ListEmptyComponent={
           <View style={styles.empty}>
             <Text style={styles.emptyIcon}>⚕️</Text>
@@ -168,12 +229,12 @@ export default function App() {
             blurOnSubmit={false}
           />
           <TouchableOpacity
-            style={[styles.sendBtn, (!input.trim() || loading) && styles.sendBtnDisabled]}
-            onPress={sendMessage}
-            disabled={!input.trim() || loading}
+            style={[styles.sendBtn, (!input.trim() && !loading) && styles.sendBtnDisabled]}
+            onPress={loading ? stopStream : sendMessage}
+            disabled={!input.trim() && !loading}
           >
             {loading ? (
-              <ActivityIndicator size="small" color="#fff" />
+              <Text style={styles.stopBtn}>■</Text>
             ) : (
               <Text style={styles.sendBtnText}>↑</Text>
             )}
@@ -275,6 +336,17 @@ const styles = StyleSheet.create({
   bubbleTextHermes: {
     color: C.text,
   },
+  // P1-10: 思考中动画
+  thinking: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  thinkingText: {
+    color: C.sub,
+    fontSize: 13,
+    marginLeft: 6,
+  },
   inputBar: {
     flexDirection: 'row',
     alignItems: 'flex-end',
@@ -310,6 +382,11 @@ const styles = StyleSheet.create({
   sendBtnText: {
     color: '#fff',
     fontSize: 20,
+    fontWeight: '700',
+  },
+  stopBtn: {
+    color: '#fff',
+    fontSize: 16,
     fontWeight: '700',
   },
 });
