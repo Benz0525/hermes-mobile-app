@@ -1,12 +1,9 @@
 // 版本检查 + 本地OTA升级工具
-import * as FileSystem from 'expo-file-system';
-import * as IntentLauncher from 'expo-intent-launcher';
-
 const VERSION_API = 'http://8.163.2.252/app-api/version';
 const APP_VERSION_CODE = 8; // 随每次发布递增
 
 /**
- * 检查是否有新版本
+ * 检查是否有新版本（不依赖任何native模块，安全调用）
  * @returns {Promise<{hasUpdate: boolean, info?: object}>}
  */
 export async function checkUpdate() {
@@ -26,11 +23,16 @@ export async function checkUpdate() {
 
 /**
  * 下载APK到本地并弹出系统安装界面
+ * native模块懒加载，避免阻塞APP启动
  * @param {string} apkUrl - APK下载地址
  * @param {function} onProgress - 进度回调 (0-100)
  * @returns {Promise<boolean>}
  */
 export async function downloadAndInstall(apkUrl, onProgress) {
+  // 懒加载native模块——只在真正需要下载时才加载
+  const FileSystem = require('expo-file-system');
+  const IntentLauncher = require('expo-intent-launcher');
+
   const fileUri = FileSystem.documentDirectory + 'hermes-update.apk';
 
   // 如果之前下载过残留文件，先删掉
