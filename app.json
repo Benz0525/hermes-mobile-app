@@ -33,6 +33,10 @@
             "softwareKeyboardLayoutMode": "pan"
           }
         }
+      ],
+      [
+        "./plugins/withWindowSoftInputMode",
+        "adjustPan"
       ]
     ],
     "newArchEnabled": false,
