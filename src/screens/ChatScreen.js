@@ -86,12 +86,11 @@ export default function ChatScreen({ route, navigation }) {
     loadMessages();
   }, [loadMessages]);
 
-  // 页面销毁时取消请求（版本B：去掉录音停止逻辑）
+  // 页面销毁时取消请求 + 停止录音
   React.useEffect(() => {
     return () => {
       abortRef.current?.();
-      // [版本B] recordingRef 已注释
-      // recordingRef.current?.stopAndUnloadAsync?.();
+      recordingRef.current?.stopAndUnloadAsync?.();
     };
   }, []);
 
