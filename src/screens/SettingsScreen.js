@@ -13,7 +13,7 @@ import { Colors } from '../colors';
 import { saveConversations } from '../utils/storage';
 
 const APP_NAME = 'Hermes';
-const APP_VERSION = '3.3.0';
+const APP_VERSION = '3.4.0';
 const SERVER_URL = 'http://8.163.2.252/app-api';
 
 export default function SettingsScreen({ navigation }) {
