@@ -421,7 +421,15 @@ export default function ChatScreen({ route, navigation }) {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
       >
-        <EmptyState icon="⚕️" title="Hermes" subtitle="有什么可以帮你？" />
+        {keyboardHeight > 0 ? (
+          // 键盘弹出时 —— 紧凑模式
+          <View style={styles.emptyCompact}>
+            <Text style={styles.emptyCompactText}>Hermes</Text>
+          </View>
+        ) : (
+          // 键盘收起时 —— 完整空状态
+          <EmptyState icon="⚕️" title="Hermes" subtitle="有什么可以帮你？" />
+        )}
         {renderInputBar()}
         {/* [版本D] AttachMenu 已恢复 */}
         <AttachMenu
@@ -544,5 +552,17 @@ const styles = StyleSheet.create({
   },
   settingsIcon: {
     fontSize: 20,
+  },
+  emptyCompact: {
+    flex: 1,
+    justifyContent: 'flex-start',
+    alignItems: 'center',
+    paddingTop: 60,
+  },
+  emptyCompactText: {
+    color: Colors.accent,
+    fontSize: 18,
+    fontWeight: '700',
+    letterSpacing: 2,
   },
 });
