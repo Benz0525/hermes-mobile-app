@@ -417,12 +417,7 @@ export default function ChatScreen({ route, navigation }) {
   if (messages.length === 0) {
     return (
       <View style={styles.container}>
-        {keyboardHeight > 0 ? (
-          // 键盘弹出时 —— 紧凑模式
-          <View style={styles.emptyCompact}>
-            <Text style={styles.emptyCompactText}>Hermes</Text>
-          </View>
-        ) : (
+        {keyboardHeight > 0 ? null : (
           // 键盘收起时 —— 完整空状态
           <View style={styles.emptyFull}>
             <EmptyState icon="⚕️" title="Hermes" subtitle="有什么可以帮你？" />
