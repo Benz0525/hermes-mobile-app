@@ -184,10 +184,11 @@ export default function ChatScreen({ route, navigation }) {
         const uri = result.assets[0].uri;
         try {
           const uploadRes = await uploadImage(uri);
+          const desc = uploadRes?.description || '';
           const userMsg = {
             id: 'u_' + Date.now(),
             role: 'user',
-            text: '[用户发送了一张图片]',
+            text: desc ? `[用户发送了一张图片] 图片描述：${desc}` : '[用户发送了一张图片]',
             imageUri: uri,
             timestamp: Date.now(),
             uploadData: uploadRes,
@@ -212,10 +213,11 @@ export default function ChatScreen({ route, navigation }) {
         const uri = result.assets[0].uri;
         try {
           const uploadRes = await uploadImage(uri);
+          const desc = uploadRes?.description || '';
           const userMsg = {
             id: 'u_' + Date.now(),
             role: 'user',
-            text: '[用户发送了一张图片]',
+            text: desc ? `[用户发送了一张图片] 图片描述：${desc}` : '[用户发送了一张图片]',
             imageUri: uri,
             timestamp: Date.now(),
             uploadData: uploadRes,
