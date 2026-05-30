@@ -1,8 +1,10 @@
 // 版本检查 + OTA升级（Android系统下载器，零原生模块依赖）
+// ⚠️ 每次发版前必须同步：此处 APP_VERSION_CODE = server.py 的 version_code
+// TODO: 后续改用 expo-constants 从 app.json extra.versionCode 读取，消除手动同步
 import { Linking } from 'react-native';
 
 const VERSION_API = 'http://8.163.2.252/app-api/version';
-const APP_VERSION_CODE = 11;
+const APP_VERSION_CODE = 14;
 
 export async function checkUpdate() {
   try {
