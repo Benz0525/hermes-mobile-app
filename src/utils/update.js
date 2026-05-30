@@ -1,4 +1,4 @@
-// 版本检查 + OTA升级（真实下载+安装）
+// 版本检查 + OTA升级（App内下载+安装，不走浏览器）
 import { Linking, Platform } from 'react-native';
 
 const VERSION_API = 'http://8.163.2.252/app-api/version';
@@ -18,14 +18,22 @@ export async function checkUpdate() {
 }
 
 export async function downloadAndInstall(apkUrl, onProgress) {
+  // 懒加载 native 模块（避免启动闪退）
+  let FileSystem;
   try {
-    // 懒加载 native 模块（避免启动闪退）
-    const FileSystem = require('expo-file-system');
-    const IntentLauncher = require('expo-intent-launcher');
+    FileSystem = require('expo-file-system');
+  } catch {
+    // 模块加载失败，降级浏览器
+    onProgress?.(50);
+    await Linking.openURL(apkUrl);
+    onProgress?.(100);
+    return true;
+  }
 
-    const fileUri = FileSystem.cacheDirectory + 'hermes-update.apk';
-    onProgress?.(0);
+  const fileUri = FileSystem.cacheDirectory + 'hermes-update.apk';
+  onProgress?.(0);
 
+  try {
     const downloadResumable = FileSystem.createDownloadResumable(
       apkUrl,
       fileUri,
@@ -37,26 +45,25 @@ export async function downloadAndInstall(apkUrl, onProgress) {
     );
 
     const result = await downloadResumable.downloadAsync();
-    if (!result || !result.uri) {
-      throw new Error('下载失败');
+    if (!result || result.status !== 200) {
+      throw new Error('下载失败: ' + (result?.status || 'unknown'));
+    }
+
+    onProgress?.(95);
+
+    if (Platform.OS === 'android') {
+      // 获取 content:// URI 并用 Linking 打开 → 系统自动弹出安装
+      const contentUri = await FileSystem.getContentUriAsync(result.uri);
+      await Linking.openURL(contentUri);
+    } else {
+      await Linking.openURL(result.uri);
     }
 
     onProgress?.(100);
-
-    // 打开APK安装
-    if (Platform.OS === 'android') {
-      const contentUri = await FileSystem.getContentUriAsync(result.uri);
-      await IntentLauncher.startActivityAsync('android.intent.action.VIEW', {
-        data: contentUri,
-        flags: 1,
-        type: 'application/vnd.android.package-archive',
-      });
-    }
-
     return true;
   } catch (err) {
-    // 降级：跳浏览器下载
-    console.warn('OTA native failed, fallback:', err.message);
+    console.warn('OTA download failed:', err.message);
+    // 降级：跳浏览器
     onProgress?.(50);
     await Linking.openURL(apkUrl);
     onProgress?.(100);
