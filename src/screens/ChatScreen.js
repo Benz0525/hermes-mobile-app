@@ -380,7 +380,7 @@ export default function ChatScreen({ route, navigation }) {
 
   // ─── 输入栏（共用） ─────────────────────────────────
   const renderInputBar = () => (
-    <View style={[styles.inputBar, { paddingBottom: 8 }]}>
+    <View style={[styles.inputBar, { paddingBottom: 20 }]}>
       {/* [版本D] ➕ 附件按钮已恢复 */}
       <TouchableOpacity
         style={styles.attachBtn}
@@ -487,7 +487,7 @@ const styles = StyleSheet.create({
     elevation: 4,
     paddingHorizontal: 10,
     paddingVertical: 10,
-    paddingBottom: 8,
+    paddingBottom: 20,
     paddingTop: 12,
     gap: 8,
   },
