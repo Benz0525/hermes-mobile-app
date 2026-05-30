@@ -1,4 +1,4 @@
-// 版本检查 + OTA升级（App内真下载+真安装）
+// 版本检查 + OTA升级（Android系统下载器，零原生模块依赖）
 import { Linking, Platform } from 'react-native';
 
 const VERSION_API = 'http://8.163.2.252/app-api/version';
@@ -18,46 +18,20 @@ export async function checkUpdate() {
 }
 
 export async function downloadAndInstall(apkUrl, onProgress) {
-  // 懒加载 native 模块（避免启动闪退）
-  let ReactNativeBlobUtil;
-  try {
-    ReactNativeBlobUtil = require('react-native-blob-util').default;
-  } catch {
-    // 模块加载失败，降级浏览器
-    onProgress?.(50);
-    await Linking.openURL(apkUrl);
+  if (Platform.OS === 'android') {
+    // 用 intent:// 直接唤起系统下载管理器，不跳浏览器
+    const path = apkUrl.replace('http://', '');
+    const intentUrl = `intent://${path}#Intent;scheme=http;type=application/vnd.android.package-archive;end`;
+    
+    onProgress?.(30);
+    await Linking.openURL(intentUrl).catch(() => {
+      // 降级：普通浏览器下载
+      return Linking.openURL(apkUrl);
+    });
     onProgress?.(100);
     return true;
   }
-
-  const filePath = ReactNativeBlobUtil.fs.dirs.DownloadDir + '/hermes-update.apk';
-  onProgress?.(0);
-
-  try {
-    const res = await ReactNativeBlobUtil.config({
-      fileCache: true,
-      path: filePath,
-    })
-      .fetch('GET', apkUrl)
-      .progress((received, total) => {
-        onProgress?.(Math.round((Number(received) / Number(total)) * 100));
-      });
-
-    onProgress?.(100);
-
-    if (Platform.OS === 'android') {
-      ReactNativeBlobUtil.android.actionViewIntent(
-        res.path(),
-        'application/vnd.android.package-archive'
-      );
-    }
-
-    return true;
-  } catch (err) {
-    console.warn('OTA failed:', err.message);
-    onProgress?.(50);
-    await Linking.openURL(apkUrl);
-    onProgress?.(100);
-    return true;
-  }
+  
+  await Linking.openURL(apkUrl);
+  return true;
 }
