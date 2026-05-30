@@ -342,6 +342,9 @@ export default function ChatScreen({ route, navigation }) {
       */
 
       default:
+        if (key === 'audio') {
+          Alert.alert('语音功能暂不可用', '因技术原因，语音录制暂不支持');
+        }
         break;
     }
   };
