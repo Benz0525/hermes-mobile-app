@@ -11,12 +11,33 @@ import {
 } from 'react-native';
 import { Colors } from '../colors';
 import { saveConversations } from '../utils/storage';
+import { checkUpdate, downloadAndInstall } from '../utils/update';
 
 const APP_NAME = 'Hermes';
 const APP_VERSION = '4.1.0';
 const SERVER_URL = 'http://8.163.2.252/app-api';
 
 export default function SettingsScreen({ navigation }) {
+  // 检查更新
+  const handleCheckUpdate = async () => {
+    const result = await checkUpdate();
+    if (result.hasUpdate) {
+      Alert.alert(
+        '发现新版本',
+        `版本 ${result.info.version} 已发布，是否下载？\n\n${result.info.release_notes}`,
+        [
+          { text: '稍后', style: 'cancel' },
+          {
+            text: '下载',
+            onPress: () => downloadAndInstall(result.info.apk_url),
+          },
+        ]
+      );
+    } else {
+      Alert.alert('已是最新版本', `当前版本 ${APP_VERSION}`);
+    }
+  };
+
   // 清除所有会话
   const handleClearAll = () => {
     Alert.alert(
@@ -52,6 +73,15 @@ export default function SettingsScreen({ navigation }) {
           <Text style={styles.label}>API 地址</Text>
           <Text style={styles.value} selectable>{SERVER_URL}</Text>
         </View>
+      </View>
+
+      {/* 更新 */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>更新</Text>
+        <TouchableOpacity style={styles.actionBtn} onPress={handleCheckUpdate}>
+          <Text style={styles.actionBtnText}>检查更新</Text>
+          <Text style={styles.actionHint}>当前版本 {APP_VERSION}</Text>
+        </TouchableOpacity>
       </View>
 
       {/* 数据管理 */}
@@ -158,5 +188,25 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
     color: Colors.danger,
+  },
+  // 操作按钮
+  actionBtn: {
+    backgroundColor: Colors.card,
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  actionBtnText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: Colors.accent,
+  },
+  actionHint: {
+    fontSize: 12,
+    color: Colors.sub,
   },
 });
