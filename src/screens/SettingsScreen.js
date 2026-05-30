@@ -97,10 +97,10 @@ export default function SettingsScreen({ navigation }) {
         <Text style={styles.sectionTitle}>关于</Text>
         <View style={styles.infoCard}>
           <Text style={styles.aboutText}>
-            Hermes v4.1 Alpha · Lightning Mode{'\\n\\n'}
-            40人并行开发 · 1小时交付 · 键盘适配 · SSE重试 · 网络优化{'\\n\\n'}
-            Built with React Native & Expo + FastAPI + DeepSeek.
-          </Text>
+                      Hermes v4.1 Alpha · Lightning Mode{'\n\n'}
+                      40人并行开发 · 1小时交付 · 键盘适配 · SSE重试 · 网络优化{'\n\n'}
+                      Built with React Native & Expo.
+                    </Text>
         </View>
       </View>
 
