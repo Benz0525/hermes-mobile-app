@@ -419,7 +419,7 @@ export default function ChatScreen({ route, navigation }) {
   // ─── 空状态 ─────────────────────────────────────────
   if (messages.length === 0) {
     return (
-      <View style={[styles.container, { paddingBottom: keyboardHeight }]}>
+      <View style={styles.container}>
         <View style={styles.emptyFull}>
           {keyboardHeight > 0 ? null : (
             <>
@@ -439,7 +439,7 @@ export default function ChatScreen({ route, navigation }) {
   }
 
   return (
-    <View style={[styles.container, { paddingBottom: keyboardHeight }]}>
+    <View style={styles.container}>
       <FlatList
         ref={flatListRef}
         data={messages}
