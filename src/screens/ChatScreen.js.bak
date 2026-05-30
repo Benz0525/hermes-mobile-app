@@ -439,11 +439,7 @@ export default function ChatScreen({ route, navigation }) {
   }
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      keyboardVerticalOffset={0}
-    >
+    <View style={styles.container}>
       <FlatList
         ref={flatListRef}
         data={messages}
@@ -465,7 +461,7 @@ export default function ChatScreen({ route, navigation }) {
         onClose={() => setAttachVisible(false)}
         onSelect={handleAttachSelect}
       />
-    </KeyboardAvoidingView>
+    </View>
   );
 }
 
