@@ -139,36 +139,36 @@ const styles = StyleSheet.create({
   wrapper: {
     paddingVertical: 6,
     borderBottomWidth: 1,
-    borderBottomColor: '#1a1d2e',
+    borderBottomColor: Colors.border,
   },
   scroll: {
     paddingHorizontal: 12,
-    gap: 8,
+    gap: 6,
   },
   tab: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#12141c',
+    backgroundColor: Colors.card,
     borderRadius: 20,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
     borderWidth: 1,
-    borderColor: '#1a1d2e',
+    borderColor: Colors.border,
   },
   tabActive: {
-    backgroundColor: '#1a1d2e',
-    borderColor: Colors.accent,
+    backgroundColor: Colors.activeBg,
+    borderColor: Colors.activeBorder,
   },
   icon: {
-    fontSize: 14,
-    marginRight: 5,
+    fontSize: 13,
+    marginRight: 4,
   },
   label: {
-    color: Colors.subtext,
+    color: Colors.sub,
     fontSize: 13,
   },
   labelActive: {
-    color: Colors.accent,
+    color: Colors.activeText,
     fontWeight: '600',
   },
   // 编辑弹窗

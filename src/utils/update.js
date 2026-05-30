@@ -4,7 +4,7 @@
 import { Linking } from 'react-native';
 
 const VERSION_API = 'http://8.163.2.252/app-api/version';
-const APP_VERSION_CODE = 22;
+const APP_VERSION_CODE = 23;
 
 export async function checkUpdate() {
   try {

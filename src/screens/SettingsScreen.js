@@ -14,7 +14,7 @@ import { saveConversations } from '../utils/storage';
 import { checkUpdate, downloadAndInstall } from '../utils/update';
 
 const APP_NAME = 'Hermes';
-const APP_VERSION = '5.0.0';
+const APP_VERSION = '5.0.1';
 const SERVER_URL = 'http://8.163.2.252/app-api';
 
 export default function SettingsScreen({ navigation }) {

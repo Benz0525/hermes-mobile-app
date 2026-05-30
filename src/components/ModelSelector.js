@@ -74,12 +74,12 @@ const styles = StyleSheet.create({
   trigger: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#1a1d2e',
+    backgroundColor: Colors.card,
     borderRadius: 8,
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderWidth: 1,
-    borderColor: '#2a2d3e',
+    borderColor: Colors.border,
   },
   triggerText: {
     color: Colors.text,
@@ -87,7 +87,7 @@ const styles = StyleSheet.create({
     maxWidth: 120,
   },
   arrow: {
-    color: Colors.subtext,
+    color: Colors.sub,
     fontSize: 10,
     marginLeft: 6,
   },
@@ -100,14 +100,14 @@ const styles = StyleSheet.create({
   dropdown: {
     width: 280,
     maxHeight: 400,
-    backgroundColor: '#12141c',
+    backgroundColor: Colors.bg,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#2a2d3e',
+    borderColor: Colors.border,
     padding: 16,
   },
   title: {
-    color: Colors.subtext,
+    color: Colors.sub,
     fontSize: 13,
     marginBottom: 12,
     textAlign: 'center',
@@ -122,20 +122,20 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   itemActive: {
-    backgroundColor: '#1a1d2e',
+    backgroundColor: Colors.activeBg,
     borderWidth: 1,
-    borderColor: Colors.accent,
+    borderColor: Colors.activeBorder,
   },
   itemText: {
     color: Colors.text,
     fontSize: 15,
   },
   itemTextActive: {
-    color: Colors.accent,
+    color: Colors.activeText,
     fontWeight: '600',
   },
   check: {
-    color: Colors.accent,
+    color: Colors.activeText,
     fontSize: 16,
   },
 });
