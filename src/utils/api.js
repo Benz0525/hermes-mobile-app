@@ -8,12 +8,13 @@ const MAX_RETRIES = 3;       // 最大重试次数
  * 发送消息并接收 SSE 流式响应（带心跳 + 指数退避重试）
  * @param {string} text - 用户消息文本
  * @param {string} sessionId - 会话 ID（空字符串表示新会话）
+ * @param {object} config - { model, temperature, max_tokens, thinking }
  * @param {(chunk: {text?: string, sid?: string, done?: boolean}) => void} onChunk - 收到一个 chunk
  * @param {() => void} onDone - 流结束
  * @param {(error: string) => void} onError - 出错
  * @returns {() => void} abort 函数，调用可取消请求
  */
-export function sendMessageStream(text, sessionId, onChunk, onDone, onError) {
+export function sendMessageStream(text, sessionId, config, onChunk, onDone, onError) {
   let retryCount = 0;
   let aborted = false;
 
@@ -106,6 +107,7 @@ export function sendMessageStream(text, sessionId, onChunk, onDone, onError) {
     xhr.send(JSON.stringify({
       message: text,
       session_id: sessionId,
+      ...(config || {}),
     }));
 
     return xhr;

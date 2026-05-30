@@ -1,4 +1,4 @@
-// 聊天页面 v4.2 — 收发消息、流式响应、多媒体支持
+// 聊天页面 v5.0 — 多模型切换 + 4 预设模式
 // Phase 1: 80ms流式节流 + 滚底检测/按钮 + reasoning状态机 + tool透传
 import React, { useState, useRef, useCallback, useLayoutEffect } from 'react';
 import {
@@ -26,6 +26,10 @@ import MessageBubble from '../components/MessageBubble';
 import EmptyState from '../components/EmptyState';
 // [版本D] 恢复 AttachMenu
 import AttachMenu from '../components/AttachMenu';
+// [M1] 模型切换 + 预设
+import ModelSelector from '../components/ModelSelector';
+import PresetTabs from '../components/PresetTabs';
+import { loadConfig, saveConfig, getPresetConfig, DEFAULT_CONFIG } from '../utils/presets';
 
 export default function ChatScreen({ route, navigation }) {
   const { conversationId } = route.params;
@@ -37,6 +41,9 @@ export default function ChatScreen({ route, navigation }) {
   const [convTitle, setConvTitle] = useState('新对话');  // 会话标题
   // [版本D] 恢复附件菜单状态
   const [attachVisible, setAttachVisible] = useState(false); // 附件菜单
+  // [M1] 模型切换
+  const [currentConfig, setCurrentConfig] = useState(DEFAULT_CONFIG);
+  const [models, setModels] = useState([]);
 
   // ─── Phase 1: 滚底检测 ────────────────────────────────
   const [isAtBottom, setIsAtBottom] = useState(true);
@@ -115,6 +122,12 @@ export default function ChatScreen({ route, navigation }) {
   // 初次加载
   React.useEffect(() => {
     loadMessages();
+    // [M1] 加载模型配置
+    loadConfig().then(setCurrentConfig);
+    fetch('http://8.163.2.252/app-api/models')
+      .then(r => r.json())
+      .then(d => { if (d.models) setModels(d.models); })
+      .catch(() => {});
   }, [loadMessages]);
 
   // 键盘监听 —— Android 上动态调整输入栏位置
@@ -145,9 +158,16 @@ export default function ChatScreen({ route, navigation }) {
     };
   }, []);
 
-  // 右上角设置按钮
+  // 右上角设置按钮 + [M1] 左上角模型选择
   useLayoutEffect(() => {
     navigation.setOptions({
+      headerLeft: () => (
+        <ModelSelector
+          currentModel={currentConfig.model}
+          models={models}
+          onSelect={handleModelSelect}
+        />
+      ),
       headerRight: () => (
         <TouchableOpacity
           onPress={() => navigation.navigate('Settings')}
@@ -157,7 +177,7 @@ export default function ChatScreen({ route, navigation }) {
         </TouchableOpacity>
       ),
     });
-  }, [navigation]);
+  }, [navigation, currentConfig.model, models]);
 
   // ─── Phase 1: 80ms 节流 flush ─────────────────────────
   const flushPending = useCallback(() => {
@@ -215,6 +235,7 @@ export default function ChatScreen({ route, navigation }) {
     abortRef.current = sendMessageStream(
       textToSend,
       sessionId,
+      currentConfig,
       (chunk) => {
         if (chunk.sid && !sessionId) {
           setSessionId(chunk.sid);
@@ -403,6 +424,18 @@ export default function ChatScreen({ route, navigation }) {
     }
   };
 
+  // ─── M1: 模型切换 ────────────────────────────────────
+  const handleModelSelect = async (modelId) => {
+    const newConfig = { ...currentConfig, model: modelId, presetId: null };
+    setCurrentConfig(newConfig);
+    await saveConfig(newConfig);
+  };
+
+  const handlePresetSelect = async (config) => {
+    setCurrentConfig(config);
+    await saveConfig(config);
+  };
+
   // ─── 文字发送 ───────────────────────────────────────
 
   const handleSend = () => {
@@ -494,11 +527,16 @@ export default function ChatScreen({ route, navigation }) {
   if (messages.length === 0) {
     return (
       <View style={styles.container}>
+        <PresetTabs
+          activePresetId={currentConfig.presetId}
+          onPresetSelect={handlePresetSelect}
+          disabled={isStreaming}
+        />
         <View style={styles.emptyFull}>
           {keyboardHeight > 0 ? null : (
             <>
               <EmptyState icon="⚕️" title="Hermes" subtitle="有什么可以帮你？" />
-              <Text style={styles.versionText}>v4.2</Text>
+              <Text style={styles.versionText}>v5.0</Text>
             </>
           )}
         </View>
@@ -514,6 +552,11 @@ export default function ChatScreen({ route, navigation }) {
 
   return (
     <View style={styles.container}>
+      <PresetTabs
+        activePresetId={currentConfig.presetId}
+        onPresetSelect={handlePresetSelect}
+        disabled={isStreaming}
+      />
       <FlatList
         ref={flatListRef}
         data={messages}
