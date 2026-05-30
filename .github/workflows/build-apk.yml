@@ -44,9 +44,9 @@ jobs:
         run: |
           MANIFEST="android/app/src/main/AndroidManifest.xml"
           if grep -q 'windowSoftInputMode' "$MANIFEST"; then
-            sed -i 's/android:windowSoftInputMode="[^"]*"/android:windowSoftInputMode="adjustResize"/' "$MANIFEST"
+            sed -i 's/android:windowSoftInputMode="[^"]*"/android:windowSoftInputMode="adjustPan"/' "$MANIFEST"
           else
-            sed -i 's/<activity /<activity android:windowSoftInputMode="adjustResize" /' "$MANIFEST"
+            sed -i 's/<activity /<activity android:windowSoftInputMode="adjustPan" /' "$MANIFEST"
           fi
           echo "=== Verify ==="
           grep 'windowSoftInputMode' "$MANIFEST"

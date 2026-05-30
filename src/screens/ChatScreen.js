@@ -419,11 +419,7 @@ export default function ChatScreen({ route, navigation }) {
   // ─── 空状态 ─────────────────────────────────────────
   if (messages.length === 0) {
     return (
-      <KeyboardAvoidingView
-        style={styles.container}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={0}
-      >
+      <View style={[styles.container, { paddingBottom: keyboardHeight }]}>
         <View style={styles.emptyFull}>
           {keyboardHeight > 0 ? null : (
             <>
@@ -438,16 +434,12 @@ export default function ChatScreen({ route, navigation }) {
           onClose={() => setAttachVisible(false)}
           onSelect={handleAttachSelect}
         />
-      </KeyboardAvoidingView>
+      </View>
     );
   }
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      keyboardVerticalOffset={0}
-    >
+    <View style={[styles.container, { paddingBottom: keyboardHeight }]}>
       <FlatList
         ref={flatListRef}
         data={messages}
@@ -469,7 +461,7 @@ export default function ChatScreen({ route, navigation }) {
         onClose={() => setAttachVisible(false)}
         onSelect={handleAttachSelect}
       />
-    </KeyboardAvoidingView>
+    </View>
   );
 }
 
