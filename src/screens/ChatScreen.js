@@ -1,4 +1,5 @@
-// 聊天页面 —— 收发消息、流式响应、多媒体支持
+// 聊天页面 v4.2 — 收发消息、流式响应、多媒体支持
+// Phase 1: 80ms流式节流 + 滚底检测/按钮 + reasoning状态机 + tool透传
 import React, { useState, useRef, useCallback, useLayoutEffect } from 'react';
 import {
   View,
@@ -37,12 +38,23 @@ export default function ChatScreen({ route, navigation }) {
   // [版本D] 恢复附件菜单状态
   const [attachVisible, setAttachVisible] = useState(false); // 附件菜单
 
+  // ─── Phase 1: 滚底检测 ────────────────────────────────
+  const [isAtBottom, setIsAtBottom] = useState(true);
+  const [showScrollBtn, setShowScrollBtn] = useState(false);
+
   const flatListRef = useRef(null);
   const abortRef = useRef(null);           // 取消请求的函数
   const messagesRef = useRef([]);          // 最新消息引用（避免闭包旧值）
   // [版本D] 恢复录音引用（handleAttachSelect 里用）
   const recordingRef = useRef(null);       // Audio.Recording 实例
   const [keyboardHeight, setKeyboardHeight] = useState(0); // 键盘高度
+
+  // ─── Phase 1: 80ms 流式节流 refs ─────────────────────
+  const throttleRef = useRef(null);        // setTimeout handle
+  const pendingRef = useRef({ text: '', reasoning: '', toolCalls: [] }); // 待flush数据
+
+  // ─── Phase 1: reasoning 状态 refs ─────────────────────
+  const reasoningStartRef = useRef(null);  // 推理开始时间戳
 
   // 加载该会话的历史消息
   const loadMessages = useCallback(async () => {
@@ -77,12 +89,28 @@ export default function ChatScreen({ route, navigation }) {
     await saveConversations(convs);
   }, [conversationId, convTitle]);
 
-  // 滚动到底部
+  // ─── Phase 1: 滚底检测 ────────────────────────────────
+  const handleScroll = useCallback((event) => {
+    const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
+    const distanceFromBottom = contentSize.height - layoutMeasurement.height - contentOffset.y;
+    const atBottom = distanceFromBottom < 50;
+    setIsAtBottom(atBottom);
+    setShowScrollBtn(!atBottom);
+  }, []);
+
+  // 滚动到底部（主动调用）
   const scrollToBottom = () => {
     setTimeout(() => {
       flatListRef.current?.scrollToEnd({ animated: true });
-    }, 100);
+    }, 50);
   };
+
+  // 智能滚底：仅当用户在底部时才自动滚动
+  const smartScrollToBottom = useCallback(() => {
+    if (isAtBottom) {
+      scrollToBottom();
+    }
+  }, [isAtBottom]);
 
   // 初次加载
   React.useEffect(() => {
@@ -108,12 +136,12 @@ export default function ChatScreen({ route, navigation }) {
     };
   }, []);
 
-  // 页面销毁时取消请求 + 停止录音
+  // 页面销毁时取消请求 + 清节流 + 停止录音
   React.useEffect(() => {
     return () => {
       abortRef.current?.();
       recordingRef.current?.stopAndUnloadAsync?.();
-      // expo-av 已移除，录音清理暂禁用
+      if (throttleRef.current) clearTimeout(throttleRef.current);
     };
   }, []);
 
@@ -131,21 +159,50 @@ export default function ChatScreen({ route, navigation }) {
     });
   }, [navigation]);
 
+  // ─── Phase 1: 80ms 节流 flush ─────────────────────────
+  const flushPending = useCallback(() => {
+    const pending = pendingRef.current;
+    pendingRef.current = { text: '', reasoning: '', toolCalls: [] };
+    throttleRef.current = null;
+
+    if (!pending.text && !pending.reasoning && pending.toolCalls.length === 0) return;
+
+    const msgs = [...messagesRef.current];
+    const last = msgs[msgs.length - 1];
+    if (last && last.role === 'hermes') {
+      if (pending.text) last.text = (last.text || '') + pending.text;
+      if (pending.reasoning) last.reasoning = (last.reasoning || '') + pending.reasoning;
+      if (pending.toolCalls.length > 0) {
+        last.toolCalls = [...(last.toolCalls || []), ...pending.toolCalls];
+      }
+      setMessages([...msgs]);
+      messagesRef.current = msgs;
+    }
+  }, []);
+
   // ─── 多媒体处理 ───────────────────────────────────────
 
   /** 发送一条用户消息 + 一条 bot 占位消息，然后走 SSE */
   const sendToAI = (userMsg) => {
+    // 清空节流残留
+    if (throttleRef.current) clearTimeout(throttleRef.current);
+    pendingRef.current = { text: '', reasoning: '', toolCalls: [] };
+    reasoningStartRef.current = null;
+
     const withUser = [...messagesRef.current, userMsg];
     setMessages(withUser);
     messagesRef.current = withUser;
     persistMessages(withUser);
     scrollToBottom();
 
-    // 添加占位 bot 消息
+    // 添加占位 bot 消息（含 reasoning + toolCalls 空字段）
     const botMsg = {
       id: 'b_' + Date.now(),
       role: 'hermes',
       text: '',
+      reasoning: '',
+      toolCalls: [],
+      reasoningOpen: true,  // 流式进行中默认展开
       timestamp: Date.now(),
     };
     const withBot = [...withUser, botMsg];
@@ -162,23 +219,76 @@ export default function ChatScreen({ route, navigation }) {
         if (chunk.sid && !sessionId) {
           setSessionId(chunk.sid);
         }
-        if (chunk.text) {
-          const msgs = [...messagesRef.current];
-          const last = msgs[msgs.length - 1];
-          if (last && last.role === 'hermes') {
-            last.text += chunk.text;
-            setMessages([...msgs]);
-            messagesRef.current = msgs;
+
+        let hasContent = false;
+
+        // reasoning
+        if (chunk.reasoning) {
+          if (!reasoningStartRef.current) {
+            reasoningStartRef.current = Date.now();
           }
+          pendingRef.current.reasoning += chunk.reasoning;
+          hasContent = true;
+        }
+
+        // tool_calls
+        if (chunk.tool_calls) {
+          const tc = Array.isArray(chunk.tool_calls) ? chunk.tool_calls : [chunk.tool_calls];
+          pendingRef.current.toolCalls.push(...tc);
+          hasContent = true;
+        }
+
+        // text
+        if (chunk.text) {
+          pendingRef.current.text += chunk.text;
+          hasContent = true;
+        }
+
+        if (!hasContent) return;
+
+        // 80ms 节流
+        if (!throttleRef.current) {
+          throttleRef.current = setTimeout(flushPending, 80);
         }
       },
       async () => {
+        // flush 残留
+        if (throttleRef.current) clearTimeout(throttleRef.current);
+        flushPending();
+
+        // 流结束，计算推理时长 + 标记 reasoningOpen=false（1s后折叠）
+        const reasoningSec = reasoningStartRef.current
+          ? Math.round((Date.now() - reasoningStartRef.current) / 1000)
+          : 0;
+
         setIsStreaming(false);
         abortRef.current = null;
+
         const msgs = [...messagesRef.current];
+        const last = msgs[msgs.length - 1];
+        if (last && last.role === 'hermes') {
+          if (reasoningSec > 0) {
+            last.reasoningDuration = reasoningSec;
+          }
+          // 1 秒后自动折叠推理区
+          if (last.reasoning) {
+            setTimeout(() => {
+              const fresh = [...messagesRef.current];
+              const bot = fresh[fresh.length - 1];
+              if (bot && bot.role === 'hermes') {
+                bot.reasoningOpen = false;
+                setMessages([...fresh]);
+                messagesRef.current = fresh;
+              }
+            }, 1000);
+          }
+        }
+
         await persistMessages(msgs);
       },
       (error) => {
+        if (throttleRef.current) clearTimeout(throttleRef.current);
+        flushPending();
         setIsStreaming(false);
         abortRef.current = null;
         const msgs = [...messagesRef.current];
@@ -285,62 +395,6 @@ export default function ChatScreen({ route, navigation }) {
         break;
       }
 
-      // expo-av 原生库在部分设备导致闪退，音频功能暂时禁用
-      /*
-        try {
-          const Audio = await getAudio();
-          const perm = await Audio.requestPermissionsAsync();
-          if (!perm.granted) {
-            Alert.alert('权限不足', '需要麦克风权限才能录音');
-            return;
-          }
-          await Audio.setAudioModeAsync({
-            allowsRecordingIOS: true,
-            playsInSilentModeIOS: true,
-          });
-          const { recording } = await Audio.Recording.createAsync(
-            Audio.RecordingOptionsPresets.HIGH_QUALITY
-          );
-          recordingRef.current = recording;
-
-          Alert.alert(
-            '录音中',
-            '点击确定结束录音',
-            [
-              { text: '停止录音', onPress: async () => {
-                try {
-                  await recording.stopAndUnloadAsync();
-                  const uri = recording.getURI();
-                  const status = await recording.getStatusAsync();
-                  recordingRef.current = null;
-
-                  const durationSec = Math.round(status.durationMillis / 1000);
-                  const userMsg = {
-                    id: 'u_' + Date.now(),
-                    role: 'user',
-                    text: `[语音消息]`,
-                    audio: { uri, duration: durationSec },
-                    timestamp: Date.now(),
-                  };
-                  const withUser = [...messagesRef.current, userMsg];
-                  setMessages(withUser);
-                  messagesRef.current = withUser;
-                  persistMessages(withUser);
-                  scrollToBottom();
-                } catch (err) {
-                  Alert.alert('录音出错', err.message);
-                }
-              }}
-            ],
-            { cancelable: false }
-          );
-        } catch (e) {
-          Alert.alert('录音失败', e.message || '无法启动录音');
-        }
-        break;
-      }
-      */
-
       default:
         if (key === 'audio') {
           Alert.alert('语音功能暂不可用', '因技术原因，语音录制暂不支持');
@@ -368,14 +422,34 @@ export default function ChatScreen({ route, navigation }) {
   // 停止生成
   const handleStop = () => {
     abortRef.current?.();
+    if (throttleRef.current) clearTimeout(throttleRef.current);
+    flushPending();
     setIsStreaming(false);
     abortRef.current = null;
   };
 
+  // ─── Phase 1: 推理区折叠切换 ─────────────────────────
+  const toggleReasoning = useCallback((msgId) => {
+    const msgs = [...messagesRef.current];
+    const msg = msgs.find(m => m.id === msgId);
+    if (msg) {
+      msg.reasoningOpen = !msg.reasoningOpen;
+      setMessages([...msgs]);
+      messagesRef.current = msgs;
+    }
+  }, []);
+
   // 渲染消息
   const renderMessage = ({ item }) => {
-    const isThinking = isStreaming && item.role === 'hermes' && !item.text;
-    return <MessageBubble message={item} isThinking={isThinking} />;
+    const isThinking = isStreaming && item.role === 'hermes' && !item.text && !item.reasoning;
+    return (
+      <MessageBubble
+        message={item}
+        isThinking={isThinking}
+        isStreaming={item.role === 'hermes' && isStreaming}
+        onToggleReasoning={item.reasoning ? () => toggleReasoning(item.id) : undefined}
+      />
+    );
   };
 
   // ─── 输入栏（共用） ─────────────────────────────────
@@ -424,7 +498,7 @@ export default function ChatScreen({ route, navigation }) {
           {keyboardHeight > 0 ? null : (
             <>
               <EmptyState icon="⚕️" title="Hermes" subtitle="有什么可以帮你？" />
-              <Text style={styles.versionText}>v4.1</Text>
+              <Text style={styles.versionText}>v4.2</Text>
             </>
           )}
         </View>
@@ -449,9 +523,22 @@ export default function ChatScreen({ route, navigation }) {
         style={{ flex: 1 }}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
-        onContentSizeChange={scrollToBottom}
+        onContentSizeChange={smartScrollToBottom}
         onLayout={scrollToBottom}
+        onScroll={handleScroll}
+        scrollEventThrottle={16}
       />
+
+      {/* Phase 1: 回到底部浮动按钮 */}
+      {showScrollBtn && (
+        <TouchableOpacity
+          style={styles.scrollBtn}
+          onPress={scrollToBottom}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.scrollBtnText}>↓</Text>
+        </TouchableOpacity>
+      )}
 
       {renderInputBar()}
 
@@ -578,5 +665,28 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginTop: -8,
     opacity: 0.5,
+  },
+  // ─── Phase 1: 滚底浮动按钮 ─────────────────────────
+  scrollBtn: {
+    position: 'absolute',
+    bottom: 110,
+    alignSelf: 'center',
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: Colors.accent,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.4,
+    shadowRadius: 4,
+    elevation: 6,
+    zIndex: 10,
+  },
+  scrollBtnText: {
+    color: '#fff',
+    fontSize: 20,
+    fontWeight: '700',
   },
 });

@@ -1,4 +1,4 @@
-// 消息气泡 —— 支持文字、图片、文件、语音
+// 消息气泡 v4.2 — 支持文字、图片、文件、语音 + reasoning + tool calls
 import React from 'react';
 import {
   View,
@@ -7,8 +7,8 @@ import {
   Clipboard,
   Alert,
   ActivityIndicator,
+  TouchableOpacity,
 } from 'react-native';
-import { TouchableOpacity } from 'react-native';
 import { Colors } from '../colors';
 import { formatTime } from '../utils/time';
 // [版本D] 恢复多媒体气泡组件
@@ -22,9 +22,18 @@ import FileBubble from './FileBubble';
  *   - 图片：   { id, role, text, timestamp, imageUri }
  *   - 文件：   { id, role, text, timestamp, file: { name, size } }
  *   - 语音：   { id, role, text, timestamp, audio: { uri, duration } }
+ *   - Phase 1: reasoning  { reasoning, reasoningOpen, reasoningDuration }
+ *   - Phase 1: toolCalls  [{ name, arguments, result, status }]
  * @param {boolean} isThinking - 是否正在思考中（显示转圈动画）
+ * @param {boolean} isStreaming - 当前 bot 消息是否在流式接收中
+ * @param {function} onToggleReasoning - 切换推理折叠区
  */
-export default function MessageBubble({ message, isThinking = false }) {
+export default function MessageBubble({
+  message,
+  isThinking = false,
+  isStreaming = false,
+  onToggleReasoning,
+}) {
   if (!message) return null;
 
   const { role = 'hermes', text = '', timestamp } = message;
@@ -39,6 +48,100 @@ export default function MessageBubble({ message, isThinking = false }) {
 
   // 时间 HH:mm
   const timeStr = timestamp ? formatTime(timestamp) : '';
+
+  // ─── Phase 1: Reasoning 折叠区 ─────────────────────────
+
+  const renderReasoning = () => {
+    const reasoning = message.reasoning;
+    if (!reasoning && !isStreaming) return null;
+    // 流式进行中但还没收到reasoning→不显示
+    if (isStreaming && !reasoning) return null;
+
+    const isOpen = message.reasoningOpen !== false;  // 默认展开
+    const durationSec = message.reasoningDuration;
+
+    const headerLabel = isStreaming
+      ? '🌿 思考中…'
+      : durationSec
+        ? `🌿 思考了 ${durationSec} 秒`
+        : '🌿 推理过程';
+
+    return (
+      <View style={styles.reasoningWrap}>
+        <TouchableOpacity
+          style={styles.reasoningHeader}
+          onPress={onToggleReasoning}
+          activeOpacity={0.6}
+        >
+          <Text style={styles.reasoningChevron}>{isOpen ? '▾' : '▸'}</Text>
+          {isStreaming ? (
+            <View style={styles.reasoningShimmerRow}>
+              <ActivityIndicator size="small" color={Colors.accent} />
+              <Text style={styles.reasoningLabel}>{headerLabel}</Text>
+            </View>
+          ) : (
+            <Text style={styles.reasoningLabel}>{headerLabel}</Text>
+          )}
+        </TouchableOpacity>
+
+        {isOpen && (
+          <View style={styles.reasoningContent}>
+            <Text style={styles.reasoningText}>{reasoning}</Text>
+          </View>
+        )}
+      </View>
+    );
+  };
+
+  // ─── Phase 1: Tool Call 展示 ──────────────────────────
+
+  const renderToolCalls = () => {
+    const toolCalls = message.toolCalls;
+    if (!toolCalls || toolCalls.length === 0) return null;
+
+    return (
+      <View style={styles.toolCallsWrap}>
+        {toolCalls.map((tc, i) => {
+          const status = tc.status || 'running';
+          const statusConfig = TOOL_STATUS_MAP[status] || TOOL_STATUS_MAP.running;
+
+          return (
+            <View key={i} style={styles.toolCallItem}>
+              <View style={styles.toolCallHeader}>
+                <Text style={styles.toolCallIcon}>🔧</Text>
+                <Text style={styles.toolCallName}>{tc.name || tc.function?.name || '工具调用'}</Text>
+                <View style={[styles.toolStatusBadge, { backgroundColor: statusConfig.bg }]}>
+                  <Text style={[styles.toolStatusText, { color: statusConfig.color }]}>
+                    {statusConfig.label}
+                  </Text>
+                </View>
+              </View>
+              {/* 参数 */}
+              {tc.arguments ? (
+                <View style={styles.toolCallSection}>
+                  <Text style={styles.toolCallSectionTitle}>参数</Text>
+                  <Text style={styles.toolCallCode}>
+                    {typeof tc.arguments === 'string' ? tc.arguments : JSON.stringify(tc.arguments, null, 2)}
+                  </Text>
+                </View>
+              ) : null}
+              {/* 结果 / 错误 */}
+              {tc.result ? (
+                <View style={styles.toolCallSection}>
+                  <Text style={styles.toolCallSectionTitle}>
+                    {status === 'error' ? '错误' : '结果'}
+                  </Text>
+                  <Text style={[styles.toolCallCode, status === 'error' && { color: '#ef4444' }]}>
+                    {typeof tc.result === 'string' ? tc.result : JSON.stringify(tc.result, null, 2)}
+                  </Text>
+                </View>
+              ) : null}
+            </View>
+          );
+        })}
+      </View>
+    );
+  };
 
   // ─── 多媒体内容渲染 ──────────────────────────────────
 
@@ -64,7 +167,7 @@ export default function MessageBubble({ message, isThinking = false }) {
         </View>
       );
     }
-    // 纯文字
+    // 思考中（无文本无reasoning）
     if (isThinking) {
       return (
         <View style={styles.thinkingRow}>
@@ -73,6 +176,7 @@ export default function MessageBubble({ message, isThinking = false }) {
         </View>
       );
     }
+    // 纯文字
     return (
       <Text style={[styles.text, isUser ? styles.textUser : styles.textHermes]}>
         {text}
@@ -97,6 +201,13 @@ export default function MessageBubble({ message, isThinking = false }) {
         delayLongPress={400}
         disabled={hasMedia}
       >
+        {/* Phase 1: Reasoning（仅 hermes 消息） */}
+        {!isUser && renderReasoning()}
+
+        {/* Phase 1: Tool Calls（仅 hermes 消息） */}
+        {!isUser && renderToolCalls()}
+
+        {/* 正文（图片/文件/语音/文字） */}
         {renderContent()}
       </TouchableOpacity>
 
@@ -109,6 +220,17 @@ export default function MessageBubble({ message, isThinking = false }) {
     </View>
   );
 }
+
+// ─── Tool 状态机（对标 expo-ai-elements） ──────────────
+
+const TOOL_STATUS_MAP = {
+  pending:       { label: '等待中', bg: '#1e293b', color: '#94a3b8' },
+  'input-streaming': { label: '接收参数', bg: '#1e293b', color: '#94a3b8' },
+  running:       { label: '执行中', bg: '#422006', color: '#fbbf24' },
+  completed:     { label: '已完成', bg: '#052e16', color: '#4ade80' },
+  error:         { label: '出错', bg: '#450a0a', color: '#ef4444' },
+  denied:        { label: '被拒绝', bg: '#431407', color: '#fb923c' },
+};
 
 const styles = StyleSheet.create({
   /* 行容器 */
@@ -205,5 +327,102 @@ const styles = StyleSheet.create({
   timeLeft: {
     textAlign: 'left',
     marginLeft: 4,
+  },
+
+  // ─── Phase 1: Reasoning 样式 ────────────────────────
+
+  reasoningWrap: {
+    borderLeftWidth: 2,
+    borderLeftColor: Colors.accent + '44',
+    marginBottom: 8,
+    paddingLeft: 8,
+  },
+  reasoningHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 4,
+    gap: 4,
+  },
+  reasoningChevron: {
+    color: Colors.sub,
+    fontSize: 12,
+    width: 16,
+  },
+  reasoningShimmerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  reasoningLabel: {
+    color: Colors.accent,
+    fontSize: 12,
+    fontWeight: '600',
+    opacity: 0.8,
+  },
+  reasoningContent: {
+    paddingTop: 4,
+    paddingBottom: 2,
+  },
+  reasoningText: {
+    color: Colors.sub,
+    fontSize: 13,
+    lineHeight: 19,
+    opacity: 0.75,
+  },
+
+  // ─── Phase 1: Tool Call 样式 ────────────────────────
+
+  toolCallsWrap: {
+    marginBottom: 8,
+    gap: 6,
+  },
+  toolCallItem: {
+    backgroundColor: Colors.bg + '88',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    padding: 10,
+  },
+  toolCallHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  toolCallIcon: {
+    fontSize: 14,
+  },
+  toolCallName: {
+    color: Colors.text,
+    fontSize: 13,
+    fontWeight: '600',
+    flex: 1,
+  },
+  toolStatusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 8,
+  },
+  toolStatusText: {
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  toolCallSection: {
+    marginTop: 8,
+  },
+  toolCallSectionTitle: {
+    color: Colors.sub,
+    fontSize: 11,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    marginBottom: 4,
+  },
+  toolCallCode: {
+    color: Colors.text,
+    fontSize: 12,
+    fontFamily: 'monospace',
+    backgroundColor: Colors.bg,
+    borderRadius: 6,
+    padding: 8,
+    overflow: 'hidden',
   },
 });
