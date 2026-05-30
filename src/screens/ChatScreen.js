@@ -476,7 +476,7 @@ const styles = StyleSheet.create({
   },
   inputBar: {
     flexDirection: 'row',
-    alignItems: 'flex-end',
+    alignItems: 'center',
     backgroundColor: Colors.card,
     borderTopWidth: 1,
     borderTopColor: Colors.border,
