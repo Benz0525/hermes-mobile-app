@@ -421,7 +421,7 @@ export default function ChatScreen({ route, navigation }) {
           // 键盘收起时 —— 完整空状态
           <View style={styles.emptyFull}>
             <EmptyState icon="⚕️" title="Hermes" subtitle="有什么可以帮你？" />
-            <Text style={styles.versionText}>v3.3</Text>
+            <Text style={styles.versionText}>v4.1</Text>
           </View>
         )}
         {renderInputBar()}
