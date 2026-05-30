@@ -1,4 +1,4 @@
-// 版本检查 + OTA升级（App内下载+安装，不走浏览器）
+// 版本检查 + OTA升级（App内真下载+真安装）
 import { Linking, Platform } from 'react-native';
 
 const VERSION_API = 'http://8.163.2.252/app-api/version';
@@ -19,9 +19,9 @@ export async function checkUpdate() {
 
 export async function downloadAndInstall(apkUrl, onProgress) {
   // 懒加载 native 模块（避免启动闪退）
-  let FileSystem;
+  let ReactNativeBlobUtil;
   try {
-    FileSystem = require('expo-file-system');
+    ReactNativeBlobUtil = require('react-native-blob-util').default;
   } catch {
     // 模块加载失败，降级浏览器
     onProgress?.(50);
@@ -30,40 +30,31 @@ export async function downloadAndInstall(apkUrl, onProgress) {
     return true;
   }
 
-  const fileUri = FileSystem.cacheDirectory + 'hermes-update.apk';
+  const filePath = ReactNativeBlobUtil.fs.dirs.DownloadDir + '/hermes-update.apk';
   onProgress?.(0);
 
   try {
-    const downloadResumable = FileSystem.createDownloadResumable(
-      apkUrl,
-      fileUri,
-      {},
-      (progress) => {
-        const pct = progress.totalBytesWritten / progress.totalBytesExpectedToWrite;
-        onProgress?.(Math.round(pct * 100));
-      }
-    );
-
-    const result = await downloadResumable.downloadAsync();
-    if (!result || result.status !== 200) {
-      throw new Error('下载失败: ' + (result?.status || 'unknown'));
-    }
-
-    onProgress?.(95);
-
-    if (Platform.OS === 'android') {
-      // 获取 content:// URI 并用 Linking 打开 → 系统自动弹出安装
-      const contentUri = await FileSystem.getContentUriAsync(result.uri);
-      await Linking.openURL(contentUri);
-    } else {
-      await Linking.openURL(result.uri);
-    }
+    const res = await ReactNativeBlobUtil.config({
+      fileCache: true,
+      path: filePath,
+    })
+      .fetch('GET', apkUrl)
+      .progress((received, total) => {
+        onProgress?.(Math.round((Number(received) / Number(total)) * 100));
+      });
 
     onProgress?.(100);
+
+    if (Platform.OS === 'android') {
+      ReactNativeBlobUtil.android.actionViewIntent(
+        res.path(),
+        'application/vnd.android.package-archive'
+      );
+    }
+
     return true;
   } catch (err) {
-    console.warn('OTA download failed:', err.message);
-    // 降级：跳浏览器
+    console.warn('OTA failed:', err.message);
     onProgress?.(50);
     await Linking.openURL(apkUrl);
     onProgress?.(100);
