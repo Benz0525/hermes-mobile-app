@@ -2,7 +2,7 @@
   "expo": {
     "name": "Hermes",
     "slug": "hermes-mobile-app",
-    "version": "5.3.3",
+    "version": "5.3.4",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
@@ -19,8 +19,8 @@
       },
       "package": "com.hermes.app",
       "usesCleartextTraffic": true,
-      "versionCode": 32,
-      "versionName": "5.3.3"
+      "versionCode": 33,
+      "versionName": "5.3.4"
     },
     "web": {
       "favicon": "./assets/favicon.png"

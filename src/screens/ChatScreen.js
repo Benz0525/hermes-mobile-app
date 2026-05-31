@@ -31,6 +31,8 @@ import AttachMenu from '../components/AttachMenu';
 // [M1] 模型切换 + 预设 — v5.3.0 解耦
 import ModelSelector from '../components/ModelSelector';
 import PresetTabs from '../components/PresetTabs';
+// v5.3.4: 长按预设按钮弹出参数编辑器
+import OverrideEditor from '../components/OverrideEditor';
 import { loadModel, saveModel, loadPreset, savePreset, loadOverrides, saveOverrides, loadPresetsList, savePresetsList, fetchPresetsFromServer, getSendParams, DEFAULT_MODEL, DEFAULT_PRESET, FALLBACK_OVERRIDES } from '../utils/presets';
 
 export default function ChatScreen({ route, navigation }) {
@@ -51,6 +53,8 @@ export default function ChatScreen({ route, navigation }) {
   const [overrides, setOverrides] = useState(FALLBACK_OVERRIDES);
   // v5.3.1: API 调试信息开关
   const [showDebugInfo, setShowDebugInfo] = useState(true);
+  // v5.3.4: 当前正在编辑参数的预设（null = 未打开）
+  const [editingPreset, setEditingPreset] = useState(null);
 
   // ─── Phase 1: 滚底检测 ────────────────────────────────
   const [isAtBottom, setIsAtBottom] = useState(true);
@@ -657,6 +661,7 @@ export default function ChatScreen({ route, navigation }) {
           models={models}
           overrides={overrides}
           onPresetSelect={handlePresetSelect}
+          onPresetLongPress={(p) => setEditingPreset(p)}
           disabled={isStreaming}
         />
         <View style={styles.emptyFull}>
@@ -691,6 +696,7 @@ export default function ChatScreen({ route, navigation }) {
         models={models}
         overrides={overrides}
         onPresetSelect={handlePresetSelect}
+        onPresetLongPress={(p) => setEditingPreset(p)}
         disabled={isStreaming}
       />
       <FlatList
@@ -727,6 +733,53 @@ export default function ChatScreen({ route, navigation }) {
         visible={attachVisible}
         onClose={() => setAttachVisible(false)}
         onSelect={handleAttachSelect}
+      />
+
+      {/* v5.3.4: 预设参数编辑器（长按预设按钮触发） */}
+      <OverrideEditor
+        visible={!!editingPreset}
+        presetName={editingPreset ? editingPreset.label : ''}
+        presetIcon={editingPreset ? editingPreset.icon : ''}
+        modelName={(() => {
+          const mi = (models || []).find(m => m.id === currentModel);
+          return mi ? (mi.name || mi.label || currentModel) : currentModel;
+        })()}
+        initialValues={
+          editingPreset && overrides && overrides[currentModel] && overrides[currentModel][editingPreset.id]
+            ? overrides[currentModel][editingPreset.id]
+            : { temperature: 0.5, max_tokens: 4096, thinking: 'off' }
+        }
+        onClose={() => setEditingPreset(null)}
+        onSave={async (newParams) => {
+          if (!editingPreset) return;
+          const pid = editingPreset.id;
+          const newOv = {
+            ...overrides,
+            [currentModel]: {
+              ...(overrides[currentModel] || {}),
+              [pid]: newParams,
+            },
+          };
+          setOverrides(newOv);
+          await saveOverrides(newOv);
+          setEditingPreset(null);
+        }}
+        onReset={async () => {
+          if (!editingPreset) return;
+          const pid = editingPreset.id;
+          const fb = (FALLBACK_OVERRIDES[currentModel] && FALLBACK_OVERRIDES[currentModel][pid])
+            || { temperature: 0.5, max_tokens: 4096, thinking: 'off' };
+          const newOv = {
+            ...overrides,
+            [currentModel]: {
+              ...(overrides[currentModel] || {}),
+              [pid]: fb,
+            },
+          };
+          setOverrides(newOv);
+          await saveOverrides(newOv);
+          setEditingPreset(null);
+        }}
       />
     </View>
   );

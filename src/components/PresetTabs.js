@@ -30,6 +30,7 @@ export default function PresetTabs({
   models,
   overrides,
   onPresetSelect,
+  onPresetLongPress,
   disabled,
 }) {
   // VL 模型不支持预设 → 整个组件不渲染
@@ -73,6 +74,8 @@ export default function PresetTabs({
                 isActive && styles.tabActive,
               ]}
               onPress={() => handleSelect(p)}
+              onLongPress={() => onPresetLongPress && onPresetLongPress(p)}
+              delayLongPress={400}
               activeOpacity={0.7}
               disabled={disabled}
             >
