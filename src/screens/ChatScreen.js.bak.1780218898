@@ -1,7 +1,6 @@
 // 聊天页面 v5.0 — 多模型切换 + 4 预设模式
-// v5.2.2: 版本号单一真源（package.json） + weixin会话筛选
+// v5.1.3: typewriter渐显 + 分段渲染（替换80ms节流）
 import React, { useState, useRef, useCallback, useLayoutEffect, useEffect } from 'react';
-import { APP_VERSION } from '../constants/version';
 import {
   View,
   FlatList,
@@ -604,7 +603,7 @@ export default function ChatScreen({ route, navigation }) {
           ) : (
             <>
               <EmptyState icon="⚕️" title="Hermes" subtitle="有什么可以帮你？" />
-              <Text style={styles.versionText}>v{APP_VERSION}</Text>
+              <Text style={styles.versionText}>v5.1.3</Text>
             </>
           )}
         </View>
