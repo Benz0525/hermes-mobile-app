@@ -85,9 +85,14 @@ export default function DrawerMenu({
                     }}
                   >
                     <Text style={styles.itemIcon}>{p.emoji}</Text>
-                    <Text style={[styles.itemLabel, currentPersonaId === p.id && styles.itemLabelActive]}>
-                      {p.name}
-                    </Text>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.itemLabel, currentPersonaId === p.id && styles.itemLabelActive]}>
+                        {p.name}
+                      </Text>
+                      <Text style={styles.personaModelHint}>
+                        {p.model} · T={p.temperature}
+                      </Text>
+                    </View>
                   </TouchableOpacity>
                 ))}
                 <View style={styles.divider} />
@@ -175,6 +180,7 @@ const styles = StyleSheet.create({
   itemIcon: { fontSize: 18, marginRight: 14 },
   itemLabel: { fontSize: 16, color: Colors.text, fontWeight: '500' },
   itemLabelActive: { color: Colors.accent },
+  personaModelHint: { fontSize: 10, color: '#888', marginTop: 2, fontFamily: 'monospace' },
   itemDesc: { fontSize: 11, color: Colors.sub, marginTop: 2 },
   footer: { position: 'absolute', bottom: 40, left: 24 },
   footerText: { fontSize: 11, color: '#555' },

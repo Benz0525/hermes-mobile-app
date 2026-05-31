@@ -28,12 +28,7 @@ import MessageBubble from '../components/MessageBubble';
 import EmptyState from '../components/EmptyState';
 // [版本D] 恢复 AttachMenu
 import AttachMenu from '../components/AttachMenu';
-// [M1] 模型切换 + 预设 — v5.3.0 解耦
-import ModelSelector from '../components/ModelSelector';
-import PresetTabs from '../components/PresetTabs';
-// v5.3.4: 长按预设按钮弹出参数编辑器
-import OverrideEditor from '../components/OverrideEditor';
-import { loadModel, saveModel, loadPreset, savePreset, loadOverrides, saveOverrides, loadPresetsList, savePresetsList, fetchPresetsFromServer, getSendParams, DEFAULT_MODEL, DEFAULT_PRESET, FALLBACK_OVERRIDES } from '../utils/presets';
+// v5.4.2: 移除 v5.4.0 旧体系（ModelSelector/PresetTabs/OverrideEditor/presets utils）
 // v5.4.1: 角色预设 + 思考深度
 import { PERSONAS, DEFAULT_PERSONA_ID, getPersona } from '../constants/personas';
 import { DEPTHS, DEFAULT_DEPTH_ID, getDepth } from '../constants/depths';
@@ -48,16 +43,8 @@ export default function ChatScreen({ route, navigation }) {
   const [convTitle, setConvTitle] = useState('新对话');  // 会话标题
   // [版本D] 恢复附件菜单状态
   const [attachVisible, setAttachVisible] = useState(false); // 附件菜单
-  // [M1 v5.3.0] 模型 + 预设解耦
-  const [currentModel, setCurrentModel] = useState(DEFAULT_MODEL);
-  const [currentPreset, setCurrentPreset] = useState(DEFAULT_PRESET);
-  const [models, setModels] = useState([]);
-  const [presets, setPresets] = useState([]);
-  const [overrides, setOverrides] = useState(FALLBACK_OVERRIDES);
   // v5.3.1: API 调试信息开关
   const [showDebugInfo, setShowDebugInfo] = useState(true);
-  // v5.3.4: 当前正在编辑参数的预设（null = 未打开）
-  const [editingPreset, setEditingPreset] = useState(null);
   // v5.4.1: 角色预设 + 思考深度
   const [currentPersonaId, setCurrentPersonaId] = useState(DEFAULT_PERSONA_ID);
   const [currentDepthId, setCurrentDepthId] = useState(DEFAULT_DEPTH_ID);
@@ -195,23 +182,6 @@ export default function ChatScreen({ route, navigation }) {
   // 初次加载
   React.useEffect(() => {
     loadMessages();
-    // [M1 v5.3.0] 加载模型/预设/overrides
-    Promise.all([loadModel(), loadPreset(), loadOverrides()]).then(([m, p, ov]) => {
-      setCurrentModel(m);
-      setCurrentPreset(p);
-      if (ov) setOverrides(ov);
-    });
-    // 拉取后端模型列表 + 预设元数据
-    fetch('http://8.163.2.252/app-api/models')
-      .then(r => r.json())
-      .then(d => { if (Array.isArray(d)) setModels(d); })
-      .catch(() => {});
-    fetchPresetsFromServer().then(ok => {
-      if (ok) {
-        loadPresetsList().then(setPresets);
-        loadOverrides().then(ov => { if (ov) setOverrides(ov); });
-      }
-    });
   }, [loadMessages]);
 
   // 键盘监听 —— Android 上动态调整输入栏位置
@@ -257,20 +227,8 @@ export default function ChatScreen({ route, navigation }) {
     AsyncStorage.getItem('current_depth').then(v => { if (v) setCurrentDepthId(v); });
   }, []);
 
-  // 右上角设置按钮 + [M1] 左上角模型选择
-  useLayoutEffect(() => {
-    navigation.setOptions({
-      headerLeft: () => (
-        <ModelSelector
-          currentModel={currentModel}
-          models={models}
-          onSelect={handleModelSelect}
-        />
-      ),
-      // v5.3.3: [M1] 左上角模型选择保留；⚙️ 设置已下沉到会话列表页
-      headerRight: () => null,
-    });
-  }, [navigation, currentModel, models]);
+  // v5.4.2: 移除 ModelSelector headerLeft（model 现在由 persona 控制）
+  // headerLeft/headerRight 不自定义，由导航默认处理
 
   // ─── 多媒体处理 ───────────────────────────────────────
 
@@ -607,19 +565,6 @@ export default function ChatScreen({ route, navigation }) {
     }
   };
 
-  // ─── M1 v5.3.0: 模型/预设完全解耦 ──────────────────
-  const handleModelSelect = async (modelId) => {
-    setCurrentModel(modelId);
-    await saveModel(modelId);
-    // 切模型不动预设
-  };
-
-  const handlePresetSelect = async (presetId) => {
-    setCurrentPreset(presetId);
-    await savePreset(presetId);
-    // 切预设不动模型
-  };
-
   // v5.4.1: 循环切换思考深度
   const cycleDepth = () => {
     const AsyncStorage = require('@react-native-async-storage/async-storage').default;
@@ -735,27 +680,12 @@ export default function ChatScreen({ route, navigation }) {
         keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
         style={{flex:1}}>
       <View style={styles.container}>
-        {/* v5.4.1: 角色 + 深度指示条 */}
+        {/* v5.4.2: 角色指示条（深度在 drawer/inputBar 切换） */}
         <View style={styles.personaBar}>
           <Text style={styles.personaBarText}>
             {getPersona(currentPersonaId).emoji} {getPersona(currentPersonaId).name}
           </Text>
-          <TouchableOpacity onPress={cycleDepth} style={styles.depthBadge}>
-            <Text style={styles.depthBadgeText}>
-              {getDepth(currentDepthId).emoji} {getDepth(currentDepthId).name}
-            </Text>
-          </TouchableOpacity>
         </View>
-        <PresetTabs
-          activePresetId={currentPreset}
-          currentModel={currentModel}
-          presets={presets}
-          models={models}
-          overrides={overrides}
-          onPresetSelect={handlePresetSelect}
-          onPresetLongPress={(p) => setEditingPreset(p)}
-          disabled={isStreaming}
-        />
         <View style={styles.emptyFull}>
           {keyboardHeight > 0 ? null : loadingHistory ? (
             <View style={styles.loadingCloud}>
@@ -786,27 +716,12 @@ export default function ChatScreen({ route, navigation }) {
       keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
       style={{flex:1}}>
     <View style={styles.container}>
-      {/* v5.4.1: 角色 + 深度指示条 */}
+      {/* v5.4.2: 角色指示条（深度在 drawer/inputBar 切换） */}
       <View style={styles.personaBar}>
         <Text style={styles.personaBarText}>
           {getPersona(currentPersonaId).emoji} {getPersona(currentPersonaId).name}
         </Text>
-        <TouchableOpacity onPress={cycleDepth} style={styles.depthBadge}>
-          <Text style={styles.depthBadgeText}>
-            {getDepth(currentDepthId).emoji} {getDepth(currentDepthId).name}
-          </Text>
-        </TouchableOpacity>
       </View>
-      <PresetTabs
-        activePresetId={currentPreset}
-        currentModel={currentModel}
-        presets={presets}
-        models={models}
-        overrides={overrides}
-        onPresetSelect={handlePresetSelect}
-        onPresetLongPress={(p) => setEditingPreset(p)}
-        disabled={isStreaming}
-      />
       <FlatList
         ref={flatListRef}
         data={messages}
@@ -847,53 +762,6 @@ export default function ChatScreen({ route, navigation }) {
         visible={attachVisible}
         onClose={() => setAttachVisible(false)}
         onSelect={handleAttachSelect}
-      />
-
-      {/* v5.3.4: 预设参数编辑器（长按预设按钮触发） */}
-      <OverrideEditor
-        visible={!!editingPreset}
-        presetName={editingPreset ? editingPreset.label : ''}
-        presetIcon={editingPreset ? editingPreset.icon : ''}
-        modelName={(() => {
-          const mi = (models || []).find(m => m.id === currentModel);
-          return mi ? (mi.name || mi.label || currentModel) : currentModel;
-        })()}
-        initialValues={
-          editingPreset && overrides && overrides[currentModel] && overrides[currentModel][editingPreset.id]
-            ? overrides[currentModel][editingPreset.id]
-            : { temperature: 0.5, max_tokens: 4096, thinking: 'off' }
-        }
-        onClose={() => setEditingPreset(null)}
-        onSave={async (newParams) => {
-          if (!editingPreset) return;
-          const pid = editingPreset.id;
-          const newOv = {
-            ...overrides,
-            [currentModel]: {
-              ...(overrides[currentModel] || {}),
-              [pid]: newParams,
-            },
-          };
-          setOverrides(newOv);
-          await saveOverrides(newOv);
-          setEditingPreset(null);
-        }}
-        onReset={async () => {
-          if (!editingPreset) return;
-          const pid = editingPreset.id;
-          const fb = (FALLBACK_OVERRIDES[currentModel] && FALLBACK_OVERRIDES[currentModel][pid])
-            || { temperature: 0.5, max_tokens: 4096, thinking: 'off' };
-          const newOv = {
-            ...overrides,
-            [currentModel]: {
-              ...(overrides[currentModel] || {}),
-              [pid]: fb,
-            },
-          };
-          setOverrides(newOv);
-          await saveOverrides(newOv);
-          setEditingPreset(null);
-        }}
       />
     </View>
     </KeyboardAvoidingView>
@@ -1063,19 +931,6 @@ const styles = StyleSheet.create({
     color: Colors.text,
     fontSize: 13,
     fontWeight: '600',
-  },
-  depthBadge: {
-    backgroundColor: Colors.botBubble,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  depthBadgeText: {
-    color: Colors.sub,
-    fontSize: 12,
-    fontWeight: '500',
   },
   depthToggle: {
     width: 36,
