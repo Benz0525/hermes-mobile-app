@@ -1,6 +1,6 @@
 // 聊天页面 v5.0 — 多模型切换 + 4 预设模式
-// Phase 1: 80ms流式节流 + 滚底检测/按钮 + reasoning状态机 + tool透传
-import React, { useState, useRef, useCallback, useLayoutEffect } from 'react';
+// v5.1.3: typewriter渐显 + 分段渲染（替换80ms节流）
+import React, { useState, useRef, useCallback, useLayoutEffect, useEffect } from 'react';
 import {
   View,
   FlatList,
@@ -56,9 +56,9 @@ export default function ChatScreen({ route, navigation }) {
   const recordingRef = useRef(null);       // Audio.Recording 实例
   const [keyboardHeight, setKeyboardHeight] = useState(0); // 键盘高度
 
-  // ─── Phase 1: 80ms 流式节流 refs ─────────────────────
-  const throttleRef = useRef(null);        // setTimeout handle
-  const pendingRef = useRef({ text: '', reasoning: '', toolCalls: [] }); // 待flush数据
+  // ─── v5.1.3: typewriter 打字机 refs ──────────────────
+  const typewriterTimerRef = useRef(null);    // setInterval handle
+  const pendingRef = useRef({ text: '', reasoning: '', toolCalls: [] }); // 字符蓄水池
 
   // ─── Phase 1: reasoning 状态 refs ─────────────────────
   const reasoningStartRef = useRef(null);  // 推理开始时间戳
@@ -149,12 +149,12 @@ export default function ChatScreen({ route, navigation }) {
     };
   }, []);
 
-  // 页面销毁时取消请求 + 清节流 + 停止录音
+  // 页面销毁时取消请求 + 停止 typewriter + 停止录音
   React.useEffect(() => {
     return () => {
       abortRef.current?.();
       recordingRef.current?.stopAndUnloadAsync?.();
-      if (throttleRef.current) clearTimeout(throttleRef.current);
+      if (typewriterTimerRef.current) clearInterval(typewriterTimerRef.current);
     };
   }, []);
 
@@ -179,33 +179,58 @@ export default function ChatScreen({ route, navigation }) {
     });
   }, [navigation, currentConfig.model, models]);
 
-  // ─── Phase 1: 80ms 节流 flush ─────────────────────────
-  const flushPending = useCallback(() => {
-    const pending = pendingRef.current;
-    pendingRef.current = { text: '', reasoning: '', toolCalls: [] };
-    throttleRef.current = null;
+  // ─── 多媒体处理 ───────────────────────────────────────
 
-    if (!pending.text && !pending.reasoning && pending.toolCalls.length === 0) return;
+  /**
+   * v5.1.3: typewriter 打字机 tick
+   * 每 35ms 从 pendingRef.text 头部取 N 字追加到消息，
+   * N=1 默认，pending>80字时 N=2 加速，>200 字时 N=3 防积压
+   */
+  const typewriterTick = useCallback(() => {
+    const pending = pendingRef.current;
+    if (!pending.text) return;
+    const N = pending.text.length > 200 ? 3 : pending.text.length > 80 ? 2 : 1;
+    const chunk = pending.text.slice(0, N);
+    pending.text = pending.text.slice(N);
 
     const msgs = [...messagesRef.current];
     const last = msgs[msgs.length - 1];
     if (last && last.role === 'hermes') {
-      if (pending.text) last.text = (last.text || '') + pending.text;
-      if (pending.reasoning) last.reasoning = (last.reasoning || '') + pending.reasoning;
-      if (pending.toolCalls.length > 0) {
-        last.toolCalls = [...(last.toolCalls || []), ...pending.toolCalls];
-      }
-      setMessages([...msgs]);
+      last.text = (last.text || '') + chunk;
       messagesRef.current = msgs;
+      setMessages([...msgs]);
+      smartScrollToBottom();
+    }
+  }, [smartScrollToBottom]);
+
+  /** 立即 flush reasoning + toolCalls（不做 typewriter） */
+  const flushMeta = useCallback(() => {
+    const pending = pendingRef.current;
+    if (!pending.reasoning && pending.toolCalls.length === 0) return;
+    const msgs = [...messagesRef.current];
+    const last = msgs[msgs.length - 1];
+    if (!last || last.role !== 'hermes') return;
+    let changed = false;
+    if (pending.reasoning) {
+      last.reasoning = (last.reasoning || '') + pending.reasoning;
+      pending.reasoning = '';
+      changed = true;
+    }
+    if (pending.toolCalls.length > 0) {
+      last.toolCalls = [...(last.toolCalls || []), ...pending.toolCalls];
+      pending.toolCalls = [];
+      changed = true;
+    }
+    if (changed) {
+      messagesRef.current = msgs;
+      setMessages([...msgs]);
     }
   }, []);
 
-  // ─── 多媒体处理 ───────────────────────────────────────
-
   /** 发送一条用户消息 + 一条 bot 占位消息，然后走 SSE */
   const sendToAI = (userMsg) => {
-    // 清空节流残留
-    if (throttleRef.current) clearTimeout(throttleRef.current);
+    // 清空旧 typewriter
+    if (typewriterTimerRef.current) clearInterval(typewriterTimerRef.current);
     pendingRef.current = { text: '', reasoning: '', toolCalls: [] };
     reasoningStartRef.current = null;
 
@@ -222,13 +247,16 @@ export default function ChatScreen({ route, navigation }) {
       text: '',
       reasoning: '',
       toolCalls: [],
-      reasoningOpen: true,  // 流式进行中默认展开
+      reasoningOpen: true,
       timestamp: Date.now(),
     };
     const withBot = [...withUser, botMsg];
     setMessages(withBot);
     messagesRef.current = withBot;
     setIsStreaming(true);
+
+    // ─── v5.1.3: 启动 typewriter 定时器（35ms/tick） ──
+    typewriterTimerRef.current = setInterval(typewriterTick, 35);
 
     const textToSend = userMsg.text;
 
@@ -241,43 +269,46 @@ export default function ChatScreen({ route, navigation }) {
           setSessionId(chunk.sid);
         }
 
-        let hasContent = false;
-
-        // reasoning
+        // reasoning → 立即 flush
         if (chunk.reasoning) {
           if (!reasoningStartRef.current) {
             reasoningStartRef.current = Date.now();
           }
           pendingRef.current.reasoning += chunk.reasoning;
-          hasContent = true;
+          flushMeta();
         }
 
-        // tool_calls
+        // tool_calls → 立即 flush
         if (chunk.tool_calls) {
           const tc = Array.isArray(chunk.tool_calls) ? chunk.tool_calls : [chunk.tool_calls];
           pendingRef.current.toolCalls.push(...tc);
-          hasContent = true;
+          flushMeta();
         }
 
-        // text
+        // text → 囤入蓄水池，typewriter 定时器自动消费
         if (chunk.text) {
           pendingRef.current.text += chunk.text;
-          hasContent = true;
-        }
-
-        if (!hasContent) return;
-
-        // 80ms 节流
-        if (!throttleRef.current) {
-          throttleRef.current = setTimeout(flushPending, 80);
         }
       },
       async () => {
-        // flush 残留
-        if (throttleRef.current) clearTimeout(throttleRef.current);
-        flushPending();
+        // 流结束：停 typewriter + 一次性 flush 剩余文本
+        if (typewriterTimerRef.current) {
+          clearInterval(typewriterTimerRef.current);
+          typewriterTimerRef.current = null;
+        }
+        // 把 pendingRef 里剩余的文字一次性追加
+        const remaining = pendingRef.current.text;
+        pendingRef.current.text = '';
+        if (remaining) {
+          const msgs = [...messagesRef.current];
+          const last = msgs[msgs.length - 1];
+          if (last && last.role === 'hermes') {
+            last.text = (last.text || '') + remaining;
+            messagesRef.current = msgs;
+            setMessages([...msgs]);
+          }
+        }
 
-        // 流结束，计算推理时长 + 标记 reasoningOpen=false（1s后折叠）
         const reasoningSec = reasoningStartRef.current
           ? Math.round((Date.now() - reasoningStartRef.current) / 1000)
           : 0;
@@ -291,7 +322,6 @@ export default function ChatScreen({ route, navigation }) {
           if (reasoningSec > 0) {
             last.reasoningDuration = reasoningSec;
           }
-          // 1 秒后自动折叠推理区
           if (last.reasoning) {
             setTimeout(() => {
               const fresh = [...messagesRef.current];
@@ -308,13 +338,19 @@ export default function ChatScreen({ route, navigation }) {
         await persistMessages(msgs);
       },
       (error) => {
-        if (throttleRef.current) clearTimeout(throttleRef.current);
-        flushPending();
+        // 出错：停 typewriter + flush 剩余
+        if (typewriterTimerRef.current) {
+          clearInterval(typewriterTimerRef.current);
+          typewriterTimerRef.current = null;
+        }
+        const remaining = pendingRef.current.text;
+        pendingRef.current = { text: '', reasoning: '', toolCalls: [] };
         setIsStreaming(false);
         abortRef.current = null;
         const msgs = [...messagesRef.current];
         const last = msgs[msgs.length - 1];
         if (last && last.role === 'hermes') {
+          if (remaining) last.text = (last.text || '') + remaining;
           last.text = last.text || `❌ ${error}`;
           setMessages([...msgs]);
           messagesRef.current = msgs;

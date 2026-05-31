@@ -1,5 +1,5 @@
-// 消息气泡 v4.2 — 支持文字、图片、文件、语音 + reasoning + tool calls
-import React from 'react';
+// 消息气泡 v5.1.3 — typewriter 打字机 + 分段渲染（React.memo 防长文本卡顿）
+import React, { memo } from 'react';
 import {
   View,
   Text,
@@ -14,6 +14,11 @@ import { formatTime } from '../utils/time';
 // [版本D] 恢复多媒体气泡组件
 import ImageBubble from './ImageBubble';
 import FileBubble from './FileBubble';
+
+/** v5.1.3: 分段渲染 — 每段独立 React.memo，typewriter 只触发最后一段重绘 */
+const SegmentText = memo(function SegmentText({ text, style }) {
+  return <Text style={style}>{text}</Text>;
+});
 
 /**
  * MessageBubble
@@ -176,12 +181,16 @@ export default function MessageBubble({
         </View>
       );
     }
-    // 纯文字
-    return (
-      <Text style={[styles.text, isUser ? styles.textUser : styles.textHermes]}>
-        {text}
-      </Text>
-    );
+    // 纯文字 → v5.1.3: 按 \n\n 分段，每段独立 memo
+    if (!text) return null;
+    const segments = text.split('\n\n');
+    return segments.map((seg, i) => (
+      <SegmentText
+        key={`seg_${i}`}
+        text={seg + (i < segments.length - 1 ? '\n\n' : '')}
+        style={[styles.text, isUser ? styles.textUser : styles.textHermes]}
+      />
+    ));
   };
 
   // [版本D] 恢复完整 hasMedia 检查（图片+文件+音频）
