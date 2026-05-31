@@ -34,6 +34,9 @@ import PresetTabs from '../components/PresetTabs';
 // v5.3.4: 长按预设按钮弹出参数编辑器
 import OverrideEditor from '../components/OverrideEditor';
 import { loadModel, saveModel, loadPreset, savePreset, loadOverrides, saveOverrides, loadPresetsList, savePresetsList, fetchPresetsFromServer, getSendParams, DEFAULT_MODEL, DEFAULT_PRESET, FALLBACK_OVERRIDES } from '../utils/presets';
+// v5.4.1: 角色预设 + 思考深度
+import { PERSONAS, DEFAULT_PERSONA_ID, getPersona } from '../constants/personas';
+import { DEPTHS, DEFAULT_DEPTH_ID, getDepth } from '../constants/depths';
 
 export default function ChatScreen({ route, navigation }) {
   const { conversationId } = route.params;
@@ -55,6 +58,9 @@ export default function ChatScreen({ route, navigation }) {
   const [showDebugInfo, setShowDebugInfo] = useState(true);
   // v5.3.4: 当前正在编辑参数的预设（null = 未打开）
   const [editingPreset, setEditingPreset] = useState(null);
+  // v5.4.1: 角色预设 + 思考深度
+  const [currentPersonaId, setCurrentPersonaId] = useState(DEFAULT_PERSONA_ID);
+  const [currentDepthId, setCurrentDepthId] = useState(DEFAULT_DEPTH_ID);
 
   // ─── Phase 1: 滚底检测 ────────────────────────────────
   const [isAtBottom, setIsAtBottom] = useState(true);
@@ -159,19 +165,23 @@ export default function ChatScreen({ route, navigation }) {
     await saveConversations(convs);
   }, [conversationId, convTitle]);
 
-  // ─── Phase 1: 滚底检测 ────────────────────────────────
+  // ─── Phase 1: 滚底检测 + 顶部加载更早消息 ──────────
   const handleScroll = useCallback((event) => {
     const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
     const distanceFromBottom = contentSize.height - layoutMeasurement.height - contentOffset.y;
     const atBottom = distanceFromBottom < 50;
     setIsAtBottom(atBottom);
     setShowScrollBtn(!atBottom);
-  }, []);
+    // v5.4.1: 非inverted模式下，上滑到顶（offset.y < 100）触发加载更早消息
+    if (contentOffset.y < 100 && hasMore && !isStreaming) {
+      loadMoreOlder();
+    }
+  }, [hasMore, isStreaming, loadMoreOlder]);
 
-  // 滚动到底部（主动调用）— v5.4.0: inverted FlatList 用 offset=0
+  // 滚动到底部（主动调用）— v5.4.1: 非inverted，用 scrollToEnd
   const scrollToBottom = () => {
     setTimeout(() => {
-      flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
+      flatListRef.current?.scrollToEnd({ animated: true });
     }, 50);
   };
 
@@ -238,6 +248,13 @@ export default function ChatScreen({ route, navigation }) {
     AsyncStorage.getItem('hermes_show_api_debug').then((v) => {
       if (v !== null) setShowDebugInfo(v === 'true');
     });
+  }, []);
+
+  // v5.4.1: 加载角色预设 + 思考深度
+  React.useEffect(() => {
+    const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+    AsyncStorage.getItem('current_persona').then(v => { if (v) setCurrentPersonaId(v); });
+    AsyncStorage.getItem('current_depth').then(v => { if (v) setCurrentDepthId(v); });
   }, []);
 
   // 右上角设置按钮 + [M1] 左上角模型选择
@@ -357,7 +374,17 @@ export default function ChatScreen({ route, navigation }) {
     abortRef.current = sendMessageStream(
       textToSend,
       sessionId,
-      await getSendParams(currentModel, currentPreset, overrides, models),
+      (() => {
+        const persona = getPersona(currentPersonaId);
+        const depth = getDepth(currentDepthId);
+        return {
+          model: persona.model,
+          temperature: Math.round(persona.temperature * depth.tempMultiplier * 100) / 100,
+          max_tokens: depth.maxTokens,
+          thinking: depth.reasoning ? 'enabled' : '',
+          system_prompt: persona.systemPrompt,
+        };
+      })(),
       (chunk) => {
         if (chunk.sid && !sessionId) {
           setSessionId(chunk.sid);
@@ -593,6 +620,15 @@ export default function ChatScreen({ route, navigation }) {
     // 切预设不动模型
   };
 
+  // v5.4.1: 循环切换思考深度
+  const cycleDepth = () => {
+    const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+    const idx = DEPTHS.findIndex(d => d.id === currentDepthId);
+    const next = DEPTHS[(idx + 1) % DEPTHS.length];
+    setCurrentDepthId(next.id);
+    AsyncStorage.setItem('current_depth', next.id);
+  };
+
   // ─── 文字发送 ───────────────────────────────────────
 
   const handleSend = () => {
@@ -664,7 +700,17 @@ export default function ChatScreen({ route, navigation }) {
         multiline
         maxLength={4000}
         editable={!isStreaming}
+        blurOnSubmit={false}
+        textAlignVertical="top"
+        returnKeyType="default"
+        enablesReturnKeyAutomatically={true}
+        cursorColor={Colors.accent || '#4A90E2'}
+        selectionColor={Colors.accent || '#4A90E2'}
       />
+      {/* v5.4.1: 深度快切按钮 */}
+      <TouchableOpacity style={styles.depthToggle} onPress={cycleDepth}>
+        <Text style={styles.depthToggleText}>{getDepth(currentDepthId).emoji}</Text>
+      </TouchableOpacity>
       {isStreaming ? (
         <TouchableOpacity style={styles.stopBtn} onPress={handleStop}>
           <Text style={styles.stopBtnText}>■</Text>
@@ -684,7 +730,22 @@ export default function ChatScreen({ route, navigation }) {
   // ─── 空状态 ─────────────────────────────────────────
   if (messages.length === 0) {
     return (
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+        style={{flex:1}}>
       <View style={styles.container}>
+        {/* v5.4.1: 角色 + 深度指示条 */}
+        <View style={styles.personaBar}>
+          <Text style={styles.personaBarText}>
+            {getPersona(currentPersonaId).emoji} {getPersona(currentPersonaId).name}
+          </Text>
+          <TouchableOpacity onPress={cycleDepth} style={styles.depthBadge}>
+            <Text style={styles.depthBadgeText}>
+              {getDepth(currentDepthId).emoji} {getDepth(currentDepthId).name}
+            </Text>
+          </TouchableOpacity>
+        </View>
         <PresetTabs
           activePresetId={currentPreset}
           currentModel={currentModel}
@@ -715,11 +776,27 @@ export default function ChatScreen({ route, navigation }) {
           onSelect={handleAttachSelect}
         />
       </View>
+      </KeyboardAvoidingView>
     );
   }
 
   return (
+    <KeyboardAvoidingView
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+      style={{flex:1}}>
     <View style={styles.container}>
+      {/* v5.4.1: 角色 + 深度指示条 */}
+      <View style={styles.personaBar}>
+        <Text style={styles.personaBarText}>
+          {getPersona(currentPersonaId).emoji} {getPersona(currentPersonaId).name}
+        </Text>
+        <TouchableOpacity onPress={cycleDepth} style={styles.depthBadge}>
+          <Text style={styles.depthBadgeText}>
+            {getDepth(currentDepthId).emoji} {getDepth(currentDepthId).name}
+          </Text>
+        </TouchableOpacity>
+      </View>
       <PresetTabs
         activePresetId={currentPreset}
         currentModel={currentModel}
@@ -738,10 +815,8 @@ export default function ChatScreen({ route, navigation }) {
         renderItem={renderMessage}
         contentContainerStyle={styles.messageList}
         style={{ flex: 1 }}
-        // v5.4.0 C2-C4: 分页 + 性能
-        inverted={true}
-        onEndReached={loadMoreOlder}
-        onEndReachedThreshold={0.5}
+        // v5.4.1: 非inverted（消息正序，最新在底）+ maintainVisibleContentPosition
+        maintainVisibleContentPosition={{ minIndexForVisible: 0, autoscrollToTopThreshold: 100 }}
         initialNumToRender={20}
         maxToRenderPerBatch={10}
         windowSize={5}
@@ -821,6 +896,7 @@ export default function ChatScreen({ route, navigation }) {
         }}
       />
     </View>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -847,7 +923,7 @@ const styles = StyleSheet.create({
     elevation: 4,
     paddingHorizontal: 10,
     paddingVertical: 10,
-    paddingBottom: 36,
+    paddingBottom: 12,
     paddingTop: 12,
     gap: 8,
   },
@@ -971,5 +1047,47 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 20,
     fontWeight: '700',
+  },
+  // ─── v5.4.1: 角色 + 深度 UI ─────────────────────────
+  personaBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    backgroundColor: Colors.card,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+  },
+  personaBarText: {
+    color: Colors.text,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  depthBadge: {
+    backgroundColor: Colors.botBubble,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  depthBadgeText: {
+    color: Colors.sub,
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  depthToggle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: Colors.botBubble,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  depthToggleText: {
+    fontSize: 16,
   },
 });

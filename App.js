@@ -12,6 +12,7 @@ import ChatScreen from './src/screens/ChatScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
 import TasksScreen from './src/screens/TasksScreen';
 import TaskFormScreen from './src/screens/TaskFormScreen';
+import WechatSyncScreen from './src/screens/WechatSyncScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -219,6 +220,11 @@ export default function App() {
             options={({ route }) => ({
               title: route.params?.taskId ? '编辑任务' : '新建任务',
             })}
+          />
+          <Stack.Screen
+            name="WechatSync"
+            component={WechatSyncScreen}
+            options={{ title: '微信同步' }}
           />
         </Stack.Navigator>
       </NavigationContainer>

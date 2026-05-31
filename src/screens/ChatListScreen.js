@@ -22,6 +22,9 @@ import SwipeableRow from '../components/SwipeableRow';
 import DrawerMenu from '../components/DrawerMenu';
 import { formatTime } from '../utils/time';
 import { dateGroup } from '../utils/dateFormat';
+// v5.4.1: persona + depth
+import { PERSONAS, DEFAULT_PERSONA_ID } from '../constants/personas';
+import { DEPTHS, DEFAULT_DEPTH_ID } from '../constants/depths';
 
 export default function ChatListScreen({ navigation }) {
   const [conversations, setConversations] = useState([]);
@@ -35,6 +38,9 @@ export default function ChatListScreen({ navigation }) {
   const [unreadMap, setUnreadMap] = useState({});
   // v5.4.0 D1: 抽屉菜单
   const [drawerVisible, setDrawerVisible] = useState(false);
+  // v5.4.1: persona + depth
+  const [currentPersonaId, setCurrentPersonaId] = useState(DEFAULT_PERSONA_ID);
+  const [currentDepthId, setCurrentDepthId] = useState(DEFAULT_DEPTH_ID);
 
   // 加载数据
   const loadData = useCallback(async (silent) => {
@@ -66,6 +72,12 @@ export default function ChatListScreen({ navigation }) {
       loadUnreadBadges();
     }, [loadData])
   );
+
+  // v5.4.1: 加载 persona + depth
+  useEffect(() => {
+    AsyncStorage.getItem('current_persona').then(v => { if (v) setCurrentPersonaId(v); });
+    AsyncStorage.getItem('current_depth').then(v => { if (v) setCurrentDepthId(v); });
+  }, []);
 
   // v5.4.0 B3: 加载未读 badge — hermes_last_seen_{convId}
   const loadUnreadBadges = async () => {
@@ -163,6 +175,16 @@ export default function ChatListScreen({ navigation }) {
     setUnreadMap(prev => { const n = { ...prev }; delete n[convId]; return n; });
   };
 
+  // v5.4.1: 角色/深度切换
+  const handlePersonaSelect = async (id) => {
+    setCurrentPersonaId(id);
+    await AsyncStorage.setItem('current_persona', id);
+  };
+  const handleDepthSelect = async (id) => {
+    setCurrentDepthId(id);
+    await AsyncStorage.setItem('current_depth', id);
+  };
+
   // v5.4.0 D3: 抽屉菜单选择
   const handleDrawerSelect = (id) => {
     switch (id) {
@@ -177,6 +199,9 @@ export default function ChatListScreen({ navigation }) {
         break;
       case 'about':
         Alert.alert('关于 Hermes', 'Hermes Mobile v5.4.0\nAI 智能助手\n由阿Ben的 Hermes 驱动');
+        break;
+      case 'wechat_sync':
+        navigation.navigate('WechatSync');
         break;
     }
   };
@@ -319,18 +344,22 @@ export default function ChatListScreen({ navigation }) {
         onClose={() => setActionSheetVisible(false)}
         title={selectedConv?.title || ''}
         items={[
-          { id: 'pin', title: selectedConv?.isPinned ? '📌 取消置顶' : '📌 置顶', icon: '📌' },
-          { id: 'rename', title: '✏️ 重命名', icon: '✏️' },
-          { id: 'delete', title: '🗑 删除', icon: '🗑', danger: true },
+          { id: 'pin', title: selectedConv?.isPinned ? '取消置顶' : '置顶', icon: '📌' },
+          { id: 'rename', title: '重命名', icon: '✏️' },
+          { id: 'delete', title: '删除', icon: '🗑', danger: true },
         ]}
         onSelect={handleActionSelect}
       />
 
-      {/* v5.4.0 D1: 抽屉菜单 */}
+      {/* v5.4.1: 抽屉菜单 — 含 AI 角色 + 深度 */}
       <DrawerMenu
         visible={drawerVisible}
         onClose={() => setDrawerVisible(false)}
         onSelect={handleDrawerSelect}
+        currentPersonaId={currentPersonaId}
+        currentDepthId={currentDepthId}
+        onPersonaSelect={handlePersonaSelect}
+        onDepthSelect={handleDepthSelect}
       />
     </View>
   );
@@ -361,6 +390,7 @@ const styles = StyleSheet.create({
   },
   headerIcon: {
     fontSize: 20,
+    color: Colors.text,
   },
   addBtn: {
     width: 36,
