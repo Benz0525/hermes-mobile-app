@@ -155,3 +155,17 @@ export async function fetchSessions() {
     _source: 'api',
   }));
 }
+
+/**
+ * 从 hermes-gateway 拉取指定 session 的消息历史
+ * @param {string} sessionId - hermes session ID
+ * @returns {Promise<Array>} [{ id, role, content, ... }]
+ */
+export async function fetchSessionMessages(sessionId) {
+  const res = await fetch(`${HERMES_API}/api/sessions/${sessionId}/messages`, {
+    headers: { Authorization: `Bearer ${API_KEY}` },
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const data = await res.json();
+  return data.data || [];
+}

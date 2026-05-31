@@ -12,6 +12,7 @@ import {
   Platform,
   StyleSheet,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 // [版本D] 恢复图片+文件，音频仍禁用
 import * as ImagePicker from 'expo-image-picker';
@@ -19,7 +20,7 @@ import * as DocumentPicker from 'expo-document-picker';
 // import { Audio } from 'expo-av';
 import { Colors } from '../colors';
 import { loadConversations, saveConversations } from '../utils/storage';
-import { sendMessageStream, uploadImage, uploadFile } from '../utils/api';
+import { sendMessageStream, uploadImage, uploadFile, fetchSessionMessages } from '../utils/api';
 // expo-av 在部分设备上导致闪退，暂用懒加载（需进一步定位）
 // import { getAudio } from '../utils/audio';
 import MessageBubble from '../components/MessageBubble';
@@ -63,17 +64,42 @@ export default function ChatScreen({ route, navigation }) {
   // ─── Phase 1: reasoning 状态 refs ─────────────────────
   const reasoningStartRef = useRef(null);  // 推理开始时间戳
 
-  // 加载该会话的历史消息
+  // v5.2.1: 双源加载消息历史（本地优先 → 云端 fallback）
+  const [loadingHistory, setLoadingHistory] = useState(false);
   const loadMessages = useCallback(async () => {
+    // 1. 先查本地
     const convs = await loadConversations();
     const conv = convs.find(c => c.id === conversationId);
     if (conv) {
       setMessages(conv.messages || []);
       messagesRef.current = conv.messages || [];
       if (conv.title) setConvTitle(conv.title);
-    } else {
+      return;
+    }
+
+    // 2. 本地没有 → 调云端 API 拉历史
+    setLoadingHistory(true);
+    try {
+      const raw = await fetchSessionMessages(conversationId);
+      // 映射：role=assistant→hermes, content→text, id→_id
+      const msgs = raw
+        .filter(m => m.role !== 'tool') // 跳过工具调用
+        .map(m => ({
+          id: 'c_' + m.id,
+          role: m.role === 'assistant' ? 'hermes' : 'user',
+          text: typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
+          timestamp: m.created_at ? m.created_at * 1000 : Date.now(),
+          _fromCloud: true,
+        }));
+      setMessages(msgs);
+      messagesRef.current = msgs;
+      if (route.params?.presetTitle) setConvTitle(route.params.presetTitle);
+    } catch (e) {
+      console.warn('云端历史加载失败:', e);
       setMessages([]);
       messagesRef.current = [];
+    } finally {
+      setLoadingHistory(false);
     }
   }, [conversationId]);
 
@@ -569,10 +595,15 @@ export default function ChatScreen({ route, navigation }) {
           disabled={isStreaming}
         />
         <View style={styles.emptyFull}>
-          {keyboardHeight > 0 ? null : (
+          {keyboardHeight > 0 ? null : loadingHistory ? (
+            <View style={styles.loadingCloud}>
+              <ActivityIndicator size="large" color={Colors.accent} />
+              <Text style={styles.loadingCloudText}>加载云端历史中…</Text>
+            </View>
+          ) : (
             <>
               <EmptyState icon="⚕️" title="Hermes" subtitle="有什么可以帮你？" />
-              <Text style={styles.versionText}>v5.0</Text>
+              <Text style={styles.versionText}>v5.1.3</Text>
             </>
           )}
         </View>
@@ -744,6 +775,17 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginTop: -8,
     opacity: 0.5,
+  },
+  // v5.2.1: 云端历史加载中
+  loadingCloud: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 12,
+  },
+  loadingCloudText: {
+    color: Colors.sub,
+    fontSize: 14,
   },
   // ─── Phase 1: 滚底浮动按钮 ─────────────────────────
   scrollBtn: {

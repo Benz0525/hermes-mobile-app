@@ -32,7 +32,9 @@ export default function ChatListScreen({ navigation }) {
         fetchSessions().catch(e => {
           setApiError(e.message || '无法连接');
           return [];
-        }),
+        }).then(sessions => sessions.filter(
+          s => s.user_id != null && s.source !== 'api_server'
+        )),
       ]);
       convs.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
       setConversations(convs);
@@ -82,12 +84,12 @@ export default function ChatListScreen({ navigation }) {
     );
   };
 
-  // v5.2.0: 点击 API session → 新建本地对话（标题带入）
+  // v5.2.1: 点击 API session → 直接用云端 sid 打开
   const handleApiPress = (session) => {
-    const newId = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
     navigation.navigate('Chat', {
-      conversationId: newId,
+      conversationId: session.id,
       presetTitle: session.title || 'Hermes 会话',
+      _cloudSession: true,
     });
   };
 
