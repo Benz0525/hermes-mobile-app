@@ -203,7 +203,7 @@ export default function ChatScreen({ route, navigation }) {
 
   // v5.3.1: 初始化读取 API 调试开关
   React.useEffect(() => {
-    const { AsyncStorage } = require('@react-native-async-storage/async-storage');
+    const AsyncStorage = require('@react-native-async-storage/async-storage').default;
     AsyncStorage.getItem('hermes_show_api_debug').then((v) => {
       if (v !== null) setShowDebugInfo(v === 'true');
     });
