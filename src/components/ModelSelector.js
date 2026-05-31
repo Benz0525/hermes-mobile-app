@@ -20,12 +20,38 @@ export default function ModelSelector({ currentModel, models, onSelect }) {
     fetch('http://8.163.2.252/app-api/models')
       .then(r => r.json())
       .then(d => {
-        if (d.models && d.models.length > 0) setList(d.models);
+        if (Array.isArray(d) && d.length > 0) setList(d);
       })
       .catch(() => {});
   }, []);
 
-  const current = list.find(m => m.id === currentModel) || { id: currentModel, name: currentModel };
+  const current = list.find(m => m.id === currentModel) || { id: currentModel, name: currentModel, icon: '🤖' };
+
+  // 排序：chat 模型在前，vision 在末尾加分隔
+  const chatModels = list.filter(m => m.category !== 'vision');
+  const visionModels = list.filter(m => m.category === 'vision');
+
+  const renderItem = ({ item, isFirstVision }) => (
+    <>
+      {isFirstVision && (
+        <View style={styles.separator}>
+          <View style={styles.sepLine} />
+          <Text style={styles.sepText}>视觉</Text>
+          <View style={styles.sepLine} />
+        </View>
+      )}
+      <TouchableOpacity
+        style={[styles.item, item.id === currentModel && styles.itemActive]}
+        onPress={() => { onSelect(item.id); setVisible(false); }}
+      >
+        <Text style={styles.itemIcon}>{item.icon || '🤖'}</Text>
+        <Text style={[styles.itemText, item.id === currentModel && styles.itemTextActive]}>
+          {item.name}
+        </Text>
+        {item.id === currentModel && <Text style={styles.check}>✓</Text>}
+      </TouchableOpacity>
+    </>
+  );
 
   return (
     <View>
@@ -34,6 +60,7 @@ export default function ModelSelector({ currentModel, models, onSelect }) {
         onPress={() => setVisible(true)}
         activeOpacity={0.7}
       >
+        <Text style={styles.triggerIcon}>{current.icon || '🤖'}</Text>
         <Text style={styles.triggerText} numberOfLines={1}>
           {current.name || current.id}
         </Text>
@@ -49,19 +76,12 @@ export default function ModelSelector({ currentModel, models, onSelect }) {
           <View style={styles.dropdown}>
             <Text style={styles.title}>选择模型</Text>
             <FlatList
-              data={list}
+              data={[...chatModels, ...visionModels]}
               keyExtractor={item => item.id}
-              renderItem={({ item }) => (
-                <TouchableOpacity
-                  style={[styles.item, item.id === currentModel && styles.itemActive]}
-                  onPress={() => { onSelect(item.id); setVisible(false); }}
-                >
-                  <Text style={[styles.itemText, item.id === currentModel && styles.itemTextActive]}>
-                    {item.name}
-                  </Text>
-                  {item.id === currentModel && <Text style={styles.check}>✓</Text>}
-                </TouchableOpacity>
-              )}
+              renderItem={({ item, index }) => renderItem({
+                item,
+                isFirstVision: item.category === 'vision' && (index === chatModels.length)
+              })}
             />
           </View>
         </TouchableOpacity>
@@ -80,6 +100,10 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
     borderWidth: 1,
     borderColor: Colors.border,
+  },
+  triggerIcon: {
+    fontSize: 14,
+    marginRight: 4,
   },
   triggerText: {
     color: Colors.text,
@@ -126,6 +150,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.activeBorder,
   },
+  itemIcon: {
+    fontSize: 16,
+    marginRight: 8,
+  },
   itemText: {
     color: Colors.text,
     fontSize: 15,
@@ -137,5 +165,22 @@ const styles = StyleSheet.create({
   check: {
     color: Colors.activeText,
     fontSize: 16,
+  },
+  separator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 8,
+    paddingHorizontal: 4,
+  },
+  sepLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: Colors.border,
+  },
+  sepText: {
+    color: Colors.sub,
+    fontSize: 11,
+    marginHorizontal: 10,
+    textTransform: 'uppercase',
   },
 });

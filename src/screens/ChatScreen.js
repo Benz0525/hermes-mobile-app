@@ -28,10 +28,10 @@ import MessageBubble from '../components/MessageBubble';
 import EmptyState from '../components/EmptyState';
 // [版本D] 恢复 AttachMenu
 import AttachMenu from '../components/AttachMenu';
-// [M1] 模型切换 + 预设
+// [M1] 模型切换 + 预设 — v5.3.0 解耦
 import ModelSelector from '../components/ModelSelector';
 import PresetTabs from '../components/PresetTabs';
-import { loadConfig, saveConfig, getPresetConfig, DEFAULT_CONFIG } from '../utils/presets';
+import { loadModel, saveModel, loadPreset, savePreset, loadOverrides, saveOverrides, loadPresetsList, savePresetsList, fetchPresetsFromServer, getSendParams, DEFAULT_MODEL, DEFAULT_PRESET, FALLBACK_OVERRIDES } from '../utils/presets';
 
 export default function ChatScreen({ route, navigation }) {
   const { conversationId } = route.params;
@@ -43,9 +43,12 @@ export default function ChatScreen({ route, navigation }) {
   const [convTitle, setConvTitle] = useState('新对话');  // 会话标题
   // [版本D] 恢复附件菜单状态
   const [attachVisible, setAttachVisible] = useState(false); // 附件菜单
-  // [M1] 模型切换
-  const [currentConfig, setCurrentConfig] = useState(DEFAULT_CONFIG);
+  // [M1 v5.3.0] 模型 + 预设解耦
+  const [currentModel, setCurrentModel] = useState(DEFAULT_MODEL);
+  const [currentPreset, setCurrentPreset] = useState(DEFAULT_PRESET);
   const [models, setModels] = useState([]);
+  const [presets, setPresets] = useState([]);
+  const [overrides, setOverrides] = useState(FALLBACK_OVERRIDES);
 
   // ─── Phase 1: 滚底检测 ────────────────────────────────
   const [isAtBottom, setIsAtBottom] = useState(true);
@@ -149,12 +152,23 @@ export default function ChatScreen({ route, navigation }) {
   // 初次加载
   React.useEffect(() => {
     loadMessages();
-    // [M1] 加载模型配置
-    loadConfig().then(setCurrentConfig);
+    // [M1 v5.3.0] 加载模型/预设/overrides
+    Promise.all([loadModel(), loadPreset(), loadOverrides()]).then(([m, p, ov]) => {
+      setCurrentModel(m);
+      setCurrentPreset(p);
+      if (ov) setOverrides(ov);
+    });
+    // 拉取后端模型列表 + 预设元数据
     fetch('http://8.163.2.252/app-api/models')
       .then(r => r.json())
-      .then(d => { if (d.models) setModels(d.models); })
+      .then(d => { if (Array.isArray(d)) setModels(d); })
       .catch(() => {});
+    fetchPresetsFromServer().then(ok => {
+      if (ok) {
+        loadPresetsList().then(setPresets);
+        loadOverrides().then(ov => { if (ov) setOverrides(ov); });
+      }
+    });
   }, [loadMessages]);
 
   // 键盘监听 —— Android 上动态调整输入栏位置
@@ -190,7 +204,7 @@ export default function ChatScreen({ route, navigation }) {
     navigation.setOptions({
       headerLeft: () => (
         <ModelSelector
-          currentModel={currentConfig.model}
+          currentModel={currentModel}
           models={models}
           onSelect={handleModelSelect}
         />
@@ -204,7 +218,7 @@ export default function ChatScreen({ route, navigation }) {
         </TouchableOpacity>
       ),
     });
-  }, [navigation, currentConfig.model, models]);
+  }, [navigation, currentModel, models]);
 
   // ─── 多媒体处理 ───────────────────────────────────────
 
@@ -255,7 +269,7 @@ export default function ChatScreen({ route, navigation }) {
   }, []);
 
   /** 发送一条用户消息 + 一条 bot 占位消息，然后走 SSE */
-  const sendToAI = (userMsg) => {
+  const sendToAI = async (userMsg) => {
     // 清空旧 typewriter
     if (typewriterTimerRef.current) clearInterval(typewriterTimerRef.current);
     pendingRef.current = { text: '', reasoning: '', toolCalls: [] };
@@ -290,7 +304,7 @@ export default function ChatScreen({ route, navigation }) {
     abortRef.current = sendMessageStream(
       textToSend,
       sessionId,
-      currentConfig,
+      await getSendParams(currentModel, currentPreset, overrides),
       (chunk) => {
         if (chunk.sid && !sessionId) {
           setSessionId(chunk.sid);
@@ -487,16 +501,17 @@ export default function ChatScreen({ route, navigation }) {
     }
   };
 
-  // ─── M1: 模型切换 ────────────────────────────────────
+  // ─── M1 v5.3.0: 模型/预设完全解耦 ──────────────────
   const handleModelSelect = async (modelId) => {
-    const newConfig = { ...currentConfig, model: modelId, presetId: null };
-    setCurrentConfig(newConfig);
-    await saveConfig(newConfig);
+    setCurrentModel(modelId);
+    await saveModel(modelId);
+    // 切模型不动预设
   };
 
-  const handlePresetSelect = async (config) => {
-    setCurrentConfig(config);
-    await saveConfig(config);
+  const handlePresetSelect = async (presetId) => {
+    setCurrentPreset(presetId);
+    await savePreset(presetId);
+    // 切预设不动模型
   };
 
   // ─── 文字发送 ───────────────────────────────────────
@@ -591,7 +606,10 @@ export default function ChatScreen({ route, navigation }) {
     return (
       <View style={styles.container}>
         <PresetTabs
-          activePresetId={currentConfig.presetId}
+          activePresetId={currentPreset}
+          currentModel={currentModel}
+          presets={presets}
+          models={models}
           onPresetSelect={handlePresetSelect}
           disabled={isStreaming}
         />
@@ -621,7 +639,10 @@ export default function ChatScreen({ route, navigation }) {
   return (
     <View style={styles.container}>
       <PresetTabs
-        activePresetId={currentConfig.presetId}
+        activePresetId={currentPreset}
+        currentModel={currentModel}
+        presets={presets}
+        models={models}
         onPresetSelect={handlePresetSelect}
         disabled={isStreaming}
       />
