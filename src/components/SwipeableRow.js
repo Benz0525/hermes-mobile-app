@@ -83,6 +83,7 @@ const styles = StyleSheet.create({
   container: {
     position: 'relative',
     overflow: 'hidden',
+    borderRadius: 12,
   },
   deleteBg: {
     position: 'absolute',
@@ -92,6 +93,7 @@ const styles = StyleSheet.create({
     width: 80,
     justifyContent: 'center',
     alignItems: 'center',
+    borderRadius: 12,
   },
   deleteBtn: {
     flex: 1,
