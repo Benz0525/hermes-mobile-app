@@ -1,5 +1,5 @@
-// 对话列表页面 —— Linear 暗色风格
-import React, { useState, useCallback } from 'react';
+// 对话列表页面 —— Linear 暗色风格 · v5.2.0 双源（本地 + hermes API sessions）
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View,
   FlatList,
@@ -7,44 +7,62 @@ import {
   Text,
   Alert,
   StyleSheet,
+  RefreshControl,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Colors } from '../colors';
 import { loadConversations, saveConversations } from '../utils/storage';
+import { fetchSessions } from '../utils/api';
 import ConversationItem from '../components/ConversationItem';
 import EmptyState from '../components/EmptyState';
+import { formatTime } from '../utils/time';
 
 export default function ChatListScreen({ navigation }) {
   const [conversations, setConversations] = useState([]);
+  const [apiSessions, setApiSessions] = useState([]);
+  const [refreshing, setRefreshing] = useState(false);
+  const [apiError, setApiError] = useState('');
 
-  // 每次页面获得焦点时重新加载对话列表
+  // 加载数据
+  const loadData = useCallback(async (silent) => {
+    if (!silent) setRefreshing(true);
+    try {
+      const [convs, sessions] = await Promise.all([
+        loadConversations(),
+        fetchSessions().catch(e => {
+          setApiError(e.message || '无法连接');
+          return [];
+        }),
+      ]);
+      convs.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+      setConversations(convs);
+      setApiSessions(sessions);
+      setApiError('');
+    } catch (e) {
+      // 本地加载失败忽略
+    }
+    setRefreshing(false);
+  }, []);
+
+  // 每次页面获得焦点时重新加载
   useFocusEffect(
     useCallback(() => {
-      let active = true;
-      (async () => {
-        const convs = await loadConversations();
-        if (active) {
-          // 按更新时间倒序排列
-          convs.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
-          setConversations(convs);
-        }
-      })();
-      return () => { active = false; };
-    }, [])
+      loadData(true);
+    }, [loadData])
   );
 
-  // 新建对话：生成新 ID，跳转 ChatScreen
+  // 新建对话
   const handleNewChat = () => {
     const newId = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
     navigation.navigate('Chat', { conversationId: newId });
   };
 
-  // 点击会话进入聊天
+  // 点击本地会话
   const handlePress = (conv) => {
     navigation.navigate('Chat', { conversationId: conv.id });
   };
 
-  // 长按删除会话
+  // 长按删除本地会话
   const handleLongPress = (conv) => {
     Alert.alert(
       '删除对话',
@@ -64,7 +82,16 @@ export default function ChatListScreen({ navigation }) {
     );
   };
 
-  // 设置页面头部右侧 + 按钮
+  // v5.2.0: 点击 API session → 新建本地对话（标题带入）
+  const handleApiPress = (session) => {
+    const newId = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+    navigation.navigate('Chat', {
+      conversationId: newId,
+      presetTitle: session.title || 'Hermes 会话',
+    });
+  };
+
+  // 设置页面头部
   React.useLayoutEffect(() => {
     navigation.setOptions({
       headerRight: () => (
@@ -75,25 +102,88 @@ export default function ChatListScreen({ navigation }) {
     });
   }, [navigation]);
 
+  // 渲染列表项
+  const renderItem = ({ item }) => {
+    if (item._type === 'section') {
+      return (
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>{item.title}</Text>
+          {item.count != null && (
+            <Text style={styles.sectionCount}>{item.count}</Text>
+          )}
+        </View>
+      );
+    }
+    if (item._api) {
+      // API session 项
+      return (
+        <TouchableOpacity
+          style={styles.apiCard}
+          activeOpacity={0.7}
+          onPress={() => handleApiPress(item)}
+        >
+          <View style={styles.apiAvatar}>
+            <Text style={styles.apiAvatarText}>🤖</Text>
+          </View>
+          <View style={styles.apiCenter}>
+            <Text style={styles.apiTitle} numberOfLines={1}>
+              {item.title || '(无标题)'}
+            </Text>
+            <Text style={styles.apiMeta} numberOfLines={1}>
+              {item.model || 'unknown'} · {item.message_count || 0} 条消息
+            </Text>
+          </View>
+          <Text style={styles.apiTime}>
+            {item.started_at ? formatTime(item.started_at * 1000) : ''}
+          </Text>
+        </TouchableOpacity>
+      );
+    }
+    // 本地会话项
+    return (
+      <ConversationItem
+        conversation={item}
+        onPress={() => handlePress(item)}
+        onLongPress={() => handleLongPress(item)}
+      />
+    );
+  };
+
+  // 构建混合列表
+  const mixedList = [];
+  if (conversations.length > 0) {
+    mixedList.push({ _type: 'section', title: '📱 本地对话', count: conversations.length });
+    conversations.forEach(c => mixedList.push(c));
+  }
+  if (apiSessions.length > 0) {
+    mixedList.push({ _type: 'section', title: '☁️ Hermes 云端', count: apiSessions.length });
+    apiSessions.forEach(s => mixedList.push({ ...s, _api: true }));
+  }
+
   // 空状态
-  if (conversations.length === 0) {
+  if (mixedList.length === 0) {
     return <EmptyState icon="💬" title="还没有对话" subtitle="点击右上角开始" />;
   }
 
   return (
     <View style={styles.container}>
+      {apiError ? (
+        <View style={styles.errorBanner}>
+          <Text style={styles.errorText}>⚠️ 云端会话加载失败: {apiError}</Text>
+        </View>
+      ) : null}
       <FlatList
-        data={conversations}
-        keyExtractor={(item) => item.id}
-        renderItem={({ item }) => (
-          <ConversationItem
-            conversation={item}
-            onPress={() => handlePress(item)}
-            onLongPress={() => handleLongPress(item)}
-          />
-        )}
+        data={mixedList}
+        keyExtractor={(item, i) => item.id || `s_${i}`}
+        renderItem={renderItem}
         contentContainerStyle={styles.list}
-        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => loadData(false)}
+            tintColor={Colors.accent}
+          />
+        }
       />
     </View>
   );
@@ -106,7 +196,7 @@ const styles = StyleSheet.create({
   },
   list: {
     paddingTop: 8,
-    paddingBottom: 24,
+    paddingBottom: 16,
   },
   addBtn: {
     width: 36,
@@ -115,12 +205,84 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.accent,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 4,
   },
   addBtnText: {
     color: '#fff',
+    fontSize: 20,
+    fontWeight: '600',
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 6,
+  },
+  sectionTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.sub,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+  sectionCount: {
+    fontSize: 12,
+    color: Colors.accent,
+    marginLeft: 8,
+  },
+  apiCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.card,
+    borderRadius: 12,
+    marginHorizontal: 12,
+    marginVertical: 4,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    borderWidth: 1,
+    borderColor: Colors.accent + '33',
+    borderLeftWidth: 3,
+    borderLeftColor: Colors.accent,
+  },
+  apiAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: Colors.accent + '22',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  apiAvatarText: {
     fontSize: 22,
-    fontWeight: '300',
-    lineHeight: 24,
+  },
+  apiCenter: {
+    flex: 1,
+    marginRight: 12,
+  },
+  apiTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: Colors.text,
+    marginBottom: 4,
+  },
+  apiMeta: {
+    fontSize: 12,
+    color: Colors.sub,
+  },
+  apiTime: {
+    fontSize: 12,
+    color: Colors.sub,
+  },
+  errorBanner: {
+    backgroundColor: Colors.danger + '22',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.danger + '44',
+  },
+  errorText: {
+    fontSize: 12,
+    color: Colors.danger,
   },
 });

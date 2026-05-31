@@ -1,18 +1,13 @@
-// API 调用 —— SSE 流式对话 + 心跳 + 指数退避重试
+// API 调用 —— SSE 流式对话 + 心跳 + 指数退避重试 + session 列表
 const API_STREAM = 'http://8.163.2.252/app-api/chat/stream';
+const HERMES_API = 'http://8.163.2.252:8642';
+const API_KEY = 'hermes-benz-2026';
 const TIMEOUT = 120000;   // 120 秒超时
 const HEARTBEAT_MS = 25000;  // SSE 心跳间隔 25s
 const MAX_RETRIES = 3;       // 最大重试次数
 
 /**
  * 发送消息并接收 SSE 流式响应（带心跳 + 指数退避重试）
- * @param {string} text - 用户消息文本
- * @param {string} sessionId - 会话 ID（空字符串表示新会话）
- * @param {object} config - { model, temperature, max_tokens, thinking }
- * @param {(chunk: {text?: string, sid?: string, done?: boolean}) => void} onChunk - 收到一个 chunk
- * @param {() => void} onDone - 流结束
- * @param {(error: string) => void} onError - 出错
- * @returns {() => void} abort 函数，调用可取消请求
  */
 export function sendMessageStream(text, sessionId, config, onChunk, onDone, onError) {
   let retryCount = 0;
@@ -28,14 +23,12 @@ export function sendMessageStream(text, sessionId, config, onChunk, onDone, onEr
     xhr.setRequestHeader('Content-Type', 'application/json');
     xhr.timeout = TIMEOUT;
 
-    // SSE 心跳：每 25s 检查连接，超时则重连
     const startHeartbeat = () => {
       heartbeatTimer = setInterval(() => {
         if (xhr.readyState >= 4) {
           clearInterval(heartbeatTimer);
           return;
         }
-        // 连接正常——静默
       }, HEARTBEAT_MS);
     };
 
@@ -50,7 +43,6 @@ export function sendMessageStream(text, sessionId, config, onChunk, onDone, onEr
       lastIndex = xhr.responseText.length;
       buffer += newText;
 
-      // 按双换行切分 SSE 事件
       const events = buffer.split('\n\n');
       buffer = events.pop() || '';
 
@@ -93,7 +85,6 @@ export function sendMessageStream(text, sessionId, config, onChunk, onDone, onEr
       onDone();
     };
 
-    // 指数退避重试
     const retryWithBackoff = (errMsg) => {
       if (retryCount >= MAX_RETRIES) {
         onError(`${errMsg}（已重试 ${MAX_RETRIES} 次）`);
@@ -123,11 +114,6 @@ export function sendMessageStream(text, sessionId, config, onChunk, onDone, onEr
 
 // ─── 多媒体上传 ────────────────────────────────────────────
 
-/**
- * 上传图片到后端
- * @param {string} uri - 图片本地 URI
- * @returns {Promise<object>} 响应 JSON（含 url / extracted_text 等）
- */
 export async function uploadImage(uri) {
   const formData = new FormData();
   formData.append('file', { uri, type: 'image/jpeg', name: 'photo.jpg' });
@@ -138,13 +124,6 @@ export async function uploadImage(uri) {
   return res.json();
 }
 
-/**
- * 上传文件到后端
- * @param {string} uri       - 文件本地 URI
- * @param {string} fileName  - 原始文件名
- * @param {string} mimeType  - MIME 类型（可选）
- * @returns {Promise<object>} 响应 JSON
- */
 export async function uploadFile(uri, fileName, mimeType) {
   const formData = new FormData();
   formData.append('file', {
@@ -157,4 +136,22 @@ export async function uploadFile(uri, fileName, mimeType) {
     body: formData,
   });
   return res.json();
+}
+
+// ─── v5.2.0: Session 列表（hermes-gateway HTTP API） ──────
+
+/**
+ * 从 hermes-gateway 拉取所有 session
+ * @returns {Promise<Array>} [{ id, title, model, started_at, message_count, ... }]
+ */
+export async function fetchSessions() {
+  const res = await fetch(`${HERMES_API}/api/sessions`, {
+    headers: { Authorization: `Bearer ${API_KEY}` },
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const data = await res.json();
+  return (data.data || []).map(s => ({
+    ...s,
+    _source: 'api',
+  }));
 }
