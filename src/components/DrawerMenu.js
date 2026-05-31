@@ -144,7 +144,7 @@ export default function DrawerMenu({
 
           {/* 底部版本 */}
           <View style={styles.footer}>
-            <Text style={styles.footerText}>v5.4.1</Text>
+            <Text style={styles.footerText}>v5.4.2</Text>
           </View>
         </Animated.View>
       </View>
