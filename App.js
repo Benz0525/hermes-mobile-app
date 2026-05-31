@@ -10,6 +10,8 @@ import { checkUpdate, downloadAndInstall } from './src/utils/update';
 import ChatListScreen from './src/screens/ChatListScreen';
 import ChatScreen from './src/screens/ChatScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
+import TasksScreen from './src/screens/TasksScreen';
+import TaskFormScreen from './src/screens/TaskFormScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -204,6 +206,19 @@ export default function App() {
               title: '设置',
               presentation: 'modal',
             }}
+          />
+          {/* v5.4.0: 定时任务 */}
+          <Stack.Screen
+            name="Tasks"
+            component={TasksScreen}
+            options={{ title: '定时任务' }}
+          />
+          <Stack.Screen
+            name="TaskForm"
+            component={TaskFormScreen}
+            options={({ route }) => ({
+              title: route.params?.taskId ? '编辑任务' : '新建任务',
+            })}
           />
         </Stack.Navigator>
       </NavigationContainer>

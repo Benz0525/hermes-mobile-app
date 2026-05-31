@@ -57,9 +57,9 @@ export default function OverrideEditor({ visible, onClose, onSave, onReset, pres
   };
 
   // ±步进
-  const tempStep = 0.1;
+  const tempStep = 0.05;
   const adjustTemp = (delta) => {
-    setTemperature(prev => Math.round(Math.min(1.5, Math.max(0, prev + delta)) * 10) / 10);
+    setTemperature(prev => Math.round(Math.min(1.5, Math.max(0, prev + delta)) * 20) / 20);
   };
 
   const cycleMax = () => {
@@ -84,7 +84,7 @@ export default function OverrideEditor({ visible, onClose, onSave, onReset, pres
           <View style={styles.paramHeader}>
             <Text style={styles.paramName}>Temperature</Text>
             <Text style={styles.paramSemantic}>{tempLabel(temperature)}</Text>
-            <Text style={styles.paramValue}>{temperature.toFixed(1)}</Text>
+            <Text style={styles.paramValue}>{temperature.toFixed(2)}</Text>
           </View>
           <View style={styles.stepperRow}>
             <TouchableOpacity style={styles.stepBtn} onPress={() => adjustTemp(-tempStep)}>

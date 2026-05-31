@@ -1,4 +1,4 @@
-// 对话列表页面 —— Linear 暗色风格 · v5.2.0 双源（本地 + hermes API sessions）
+// 对话列表页面 —— Linear 暗色风格 · v5.4.0 极客风分组 + 会话交互
 import React, { useState, useCallback, useEffect } from 'react';
 import {
   View,
@@ -6,22 +6,35 @@ import {
   TouchableOpacity,
   Text,
   Alert,
+  TextInput,
   StyleSheet,
   RefreshControl,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from '@react-navigation/native';
 import { Colors } from '../colors';
 import { loadConversations, saveConversations } from '../utils/storage';
 import { fetchSessions } from '../utils/api';
 import ConversationItem from '../components/ConversationItem';
 import EmptyState from '../components/EmptyState';
+import ActionSheet from '../components/ActionSheet';
+import SwipeableRow from '../components/SwipeableRow';
+import DrawerMenu from '../components/DrawerMenu';
 import { formatTime } from '../utils/time';
+import { dateGroup } from '../utils/dateFormat';
 
 export default function ChatListScreen({ navigation }) {
   const [conversations, setConversations] = useState([]);
   const [apiSessions, setApiSessions] = useState([]);
   const [refreshing, setRefreshing] = useState(false);
   const [apiError, setApiError] = useState('');
+  // v5.4.0 B1: 长按菜单
+  const [actionSheetVisible, setActionSheetVisible] = useState(false);
+  const [selectedConv, setSelectedConv] = useState(null);
+  // v5.4.0 B3: 未读 badge
+  const [unreadMap, setUnreadMap] = useState({});
+  // v5.4.0 D1: 抽屉菜单
+  const [drawerVisible, setDrawerVisible] = useState(false);
 
   // 加载数据
   const loadData = useCallback(async (silent) => {
@@ -50,8 +63,28 @@ export default function ChatListScreen({ navigation }) {
   useFocusEffect(
     useCallback(() => {
       loadData(true);
+      loadUnreadBadges();
     }, [loadData])
   );
+
+  // v5.4.0 B3: 加载未读 badge — hermes_last_seen_{convId}
+  const loadUnreadBadges = async () => {
+    try {
+      const convs = await loadConversations();
+      const map = {};
+      for (const c of convs) {
+        const key = `hermes_last_seen_${c.id}`;
+        const lastSeen = await AsyncStorage.getItem(key);
+        if (lastSeen && c.messages && c.messages.length > 0) {
+          const lastMsg = c.messages[c.messages.length - 1];
+          if (lastMsg.role === 'hermes' && lastMsg.timestamp > parseInt(lastSeen)) {
+            map[c.id] = true;
+          }
+        }
+      }
+      setUnreadMap(map);
+    } catch (e) { /* ignore */ }
+  };
 
   // 新建对话
   const handleNewChat = () => {
@@ -64,24 +97,88 @@ export default function ChatListScreen({ navigation }) {
     navigation.navigate('Chat', { conversationId: conv.id });
   };
 
-  // 长按删除本地会话
+  // 长按 → B1: ActionSheet (删除/重命名/置顶)
   const handleLongPress = (conv) => {
-    Alert.alert(
-      '删除对话',
-      `确定要删除「${conv.title || '新对话'}」吗？`,
-      [
-        { text: '取消', style: 'cancel' },
-        {
-          text: '删除',
-          style: 'destructive',
-          onPress: async () => {
-            const updated = conversations.filter(c => c.id !== conv.id);
-            setConversations(updated);
-            await saveConversations(updated);
+    setSelectedConv(conv);
+    setActionSheetVisible(true);
+  };
+
+  // B1: ActionSheet 选择
+  const handleActionSelect = async (action) => {
+    if (!selectedConv) return;
+    const conv = selectedConv;
+    switch (action) {
+      case 'delete':
+        await handleDelete(conv);
+        break;
+      case 'rename':
+        handleRename(conv);
+        break;
+      case 'pin':
+        await handlePin(conv);
+        break;
+    }
+  };
+
+  // B1: 删除
+  const handleDelete = async (conv) => {
+    const updated = conversations.filter(c => c.id !== conv.id);
+    setConversations(updated);
+    await saveConversations(updated);
+  };
+
+  // B1: 重命名
+  const handleRename = (conv) => {
+    Alert.prompt
+      ? Alert.prompt('重命名', '输入新名称', [
+          { text: '取消', style: 'cancel' },
+          { text: '确定', onPress: async (text) => {
+              const updated = conversations.map(c =>
+                c.id === conv.id ? { ...c, title: text || conv.title } : c
+              );
+              setConversations(updated);
+              await saveConversations(updated);
+            }
           },
-        },
-      ]
+        ], 'plain-text', conv.title || '')
+      : Alert.alert('重命名', '请输入新名称', [
+          { text: '取消', style: 'cancel' },
+          { text: '确定', onPress: () => {} },
+        ]);
+  };
+
+  // B4: 置顶/取消置顶
+  const handlePin = async (conv) => {
+    const newPinned = !conv.isPinned;
+    const updated = conversations.map(c =>
+      c.id === conv.id ? { ...c, isPinned: newPinned } : c
     );
+    setConversations(updated);
+    await saveConversations(updated);
+  };
+
+  // B3: 清除未读 — 进入聊天时调用
+  const markRead = async (convId) => {
+    await AsyncStorage.setItem(`hermes_last_seen_${convId}`, Date.now().toString());
+    setUnreadMap(prev => { const n = { ...prev }; delete n[convId]; return n; });
+  };
+
+  // v5.4.0 D3: 抽屉菜单选择
+  const handleDrawerSelect = (id) => {
+    switch (id) {
+      case 'new_chat':
+        handleNewChat();
+        break;
+      case 'tasks':
+        navigation.navigate('Tasks');
+        break;
+      case 'settings':
+        navigation.navigate('Settings');
+        break;
+      case 'about':
+        Alert.alert('关于 Hermes', 'Hermes Mobile v5.4.0\nAI 智能助手\n由阿Ben的 Hermes 驱动');
+        break;
+    }
   };
 
   // v5.2.1: 点击 API session → 直接用云端 sid 打开
@@ -93,18 +190,19 @@ export default function ChatListScreen({ navigation }) {
     });
   };
 
-  // 设置页面头部
+  // 设置页面头部 — v5.4.0 D2: 左侧 ☰ 抽屉 + 右侧 ＋
   React.useLayoutEffect(() => {
     navigation.setOptions({
-      // v5.3.3: 右上角 ⚙️ 设置 + ＋ 新建（设置全局入口下沉到列表页）
+      headerLeft: () => (
+        <TouchableOpacity
+          onPress={() => setDrawerVisible(true)}
+          style={styles.headerIconBtn}
+        >
+          <Text style={styles.headerIcon}>☰</Text>
+        </TouchableOpacity>
+      ),
       headerRight: () => (
         <View style={styles.headerRightRow}>
-          <TouchableOpacity
-            onPress={() => navigation.navigate('Settings')}
-            style={styles.headerIconBtn}
-          >
-            <Text style={styles.headerIcon}>⚙️</Text>
-          </TouchableOpacity>
           <TouchableOpacity onPress={handleNewChat} style={styles.addBtn}>
             <Text style={styles.addBtnText}>＋</Text>
           </TouchableOpacity>
@@ -150,22 +248,40 @@ export default function ChatListScreen({ navigation }) {
         </TouchableOpacity>
       );
     }
-    // 本地会话项
+    // 本地会话项 — v5.4.0: SwipeableRow + 未读 badge
     return (
-      <ConversationItem
-        conversation={item}
-        onPress={() => handlePress(item)}
-        onLongPress={() => handleLongPress(item)}
-      />
+      <SwipeableRow onDelete={() => handleDelete(item)}>
+        <ConversationItem
+          conversation={item}
+          onPress={() => { markRead(item.id); handlePress(item); }}
+          onLongPress={() => handleLongPress(item)}
+          hasUnread={!!unreadMap[item.id]}
+        />
+      </SwipeableRow>
     );
   };
 
-  // 构建混合列表
+  // 构建混合列表 — v5.4.0: 日期分组（今天/昨天/本周/更早）
   const mixedList = [];
-  if (conversations.length > 0) {
-    mixedList.push({ _type: 'section', title: '📱 本地对话', count: conversations.length });
-    conversations.forEach(c => mixedList.push(c));
-  }
+
+  // 按日期分组本地会话
+  const groups = { '今天': [], '昨天': [], '本周': [], '更早': [] };
+  conversations.forEach(c => {
+    const g = dateGroup(c.updatedAt);
+    (groups[g] || groups['更早']).push(c);
+  });
+
+  // 置顶优先排序
+  const GROUP_ORDER = ['今天', '昨天', '本周', '更早'];
+  GROUP_ORDER.forEach(g => {
+    if (groups[g] && groups[g].length > 0) {
+      // 置顶在前
+      groups[g].sort((a, b) => (b.isPinned ? 1 : 0) - (a.isPinned ? 1 : 0));
+      mixedList.push({ _type: 'section', title: g, count: groups[g].length });
+      groups[g].forEach(c => mixedList.push(c));
+    }
+  });
+
   if (apiSessions.length > 0) {
     mixedList.push({ _type: 'section', title: '☁️ Hermes 云端', count: apiSessions.length });
     apiSessions.forEach(s => mixedList.push({ ...s, _api: true }));
@@ -195,6 +311,26 @@ export default function ChatListScreen({ navigation }) {
             tintColor={Colors.accent}
           />
         }
+      />
+
+      {/* v5.4.0 B1: 长按菜单 */}
+      <ActionSheet
+        visible={actionSheetVisible}
+        onClose={() => setActionSheetVisible(false)}
+        title={selectedConv?.title || ''}
+        items={[
+          { id: 'pin', title: selectedConv?.isPinned ? '📌 取消置顶' : '📌 置顶', icon: '📌' },
+          { id: 'rename', title: '✏️ 重命名', icon: '✏️' },
+          { id: 'delete', title: '🗑 删除', icon: '🗑', danger: true },
+        ]}
+        onSelect={handleActionSelect}
+      />
+
+      {/* v5.4.0 D1: 抽屉菜单 */}
+      <DrawerMenu
+        visible={drawerVisible}
+        onClose={() => setDrawerVisible(false)}
+        onSelect={handleDrawerSelect}
       />
     </View>
   );

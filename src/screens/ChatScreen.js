@@ -71,6 +71,11 @@ export default function ChatScreen({ route, navigation }) {
   const typewriterTimerRef = useRef(null);    // setInterval handle
   const pendingRef = useRef({ text: '', reasoning: '', toolCalls: [] }); // 字符蓄水池
 
+  // ─── v5.4.0: 消息分页 refs ──────────────────────────
+  const allMessagesRef = useRef([]);          // 全量消息（不渲染），首屏只渲染最后20条
+  const PAGE_SIZE = 20;
+  const [hasMore, setHasMore] = useState(false);
+
   // ─── Phase 1: reasoning 状态 refs ─────────────────────
   const reasoningStartRef = useRef(null);  // 推理开始时间戳
 
@@ -81,8 +86,13 @@ export default function ChatScreen({ route, navigation }) {
     const convs = await loadConversations();
     const conv = convs.find(c => c.id === conversationId);
     if (conv) {
-      setMessages(conv.messages || []);
-      messagesRef.current = conv.messages || [];
+      // v5.4.0 C1: 全量存 ref，首屏只渲染最后20条
+      const allMsgs = conv.messages || [];
+      allMessagesRef.current = allMsgs;
+      messagesRef.current = allMsgs;
+      const visible = allMsgs.slice(-PAGE_SIZE);
+      setMessages(visible);
+      setHasMore(visible.length < allMsgs.length);
       if (conv.title) setConvTitle(conv.title);
       return;
     }
@@ -113,6 +123,23 @@ export default function ChatScreen({ route, navigation }) {
     }
   }, [conversationId]);
 
+  // v5.4.0 C3: 加载更早的消息（向上滚动触发）
+  const loadMoreOlder = useCallback(() => {
+    const all = allMessagesRef.current;
+    const current = messagesRef.current;
+    if (current.length >= all.length) {
+      setHasMore(false);
+      return;
+    }
+    // prepend older messages
+    const startIdx = Math.max(0, all.length - current.length - PAGE_SIZE);
+    const older = all.slice(startIdx, all.length - current.length);
+    const merged = [...older, ...current];
+    messagesRef.current = merged;
+    setMessages([...merged]);
+    setHasMore(startIdx > 0);
+  }, []);
+
   // 保存消息到 storage
   const persistMessages = useCallback(async (msgs) => {
     const convs = await loadConversations();
@@ -141,10 +168,10 @@ export default function ChatScreen({ route, navigation }) {
     setShowScrollBtn(!atBottom);
   }, []);
 
-  // 滚动到底部（主动调用）
+  // 滚动到底部（主动调用）— v5.4.0: inverted FlatList 用 offset=0
   const scrollToBottom = () => {
     setTimeout(() => {
-      flatListRef.current?.scrollToEnd({ animated: true });
+      flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
     }, 50);
   };
 
@@ -300,6 +327,8 @@ export default function ChatScreen({ route, navigation }) {
     const withUser = [...messagesRef.current, userMsg];
     setMessages(withUser);
     messagesRef.current = withUser;
+    // v5.4.0: 同步 allMessagesRef
+    allMessagesRef.current = [...allMessagesRef.current, userMsg];
     persistMessages(withUser);
     scrollToBottom();
 
@@ -316,6 +345,8 @@ export default function ChatScreen({ route, navigation }) {
     const withBot = [...withUser, botMsg];
     setMessages(withBot);
     messagesRef.current = withBot;
+    // v5.4.0: 同步 allMessagesRef
+    allMessagesRef.current = [...allMessagesRef.current, botMsg];
     setIsStreaming(true);
 
     // ─── v5.1.3: 启动 typewriter 定时器（35ms/tick） ──
@@ -707,6 +738,14 @@ export default function ChatScreen({ route, navigation }) {
         renderItem={renderMessage}
         contentContainerStyle={styles.messageList}
         style={{ flex: 1 }}
+        // v5.4.0 C2-C4: 分页 + 性能
+        inverted={true}
+        onEndReached={loadMoreOlder}
+        onEndReachedThreshold={0.5}
+        initialNumToRender={20}
+        maxToRenderPerBatch={10}
+        windowSize={5}
+        removeClippedSubviews={true}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
         onContentSizeChange={smartScrollToBottom}
