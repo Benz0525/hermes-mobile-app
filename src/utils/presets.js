@@ -135,10 +135,20 @@ export async function fetchPresetsFromServer() {
 
 // ─── 核心：获取当前发送参数 ─────────────────────
 // modelId: 当前选中的模型，presetId: 当前选中的预设（VL时为null）
+// models: 模型列表（含 fixed_params）
 // 返回 { model, temperature, max_tokens, thinking }
-export async function getSendParams(modelId, presetId, overrides) {
+export async function getSendParams(modelId, presetId, overrides, models) {
+  // VL / 不支持预设 → 用 fixed_params
+  const modelInfo = (models || []).find(m => m.id === modelId);
+  if (modelInfo && modelInfo.supports_presets === false && modelInfo.fixed_params) {
+    return {
+      model: modelId,
+      temperature: modelInfo.fixed_params.temperature || 0.5,
+      max_tokens: modelInfo.fixed_params.max_tokens || 4096,
+      thinking: '',
+    };
+  }
   if (!presetId || !overrides || !overrides[modelId]) {
-    // VL 或 无预设 → 默认参数
     return { model: modelId, temperature: 0.5, max_tokens: 4096, thinking: '' };
   }
   const mo = overrides[modelId];

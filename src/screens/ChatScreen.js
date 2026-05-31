@@ -304,7 +304,7 @@ export default function ChatScreen({ route, navigation }) {
     abortRef.current = sendMessageStream(
       textToSend,
       sessionId,
-      await getSendParams(currentModel, currentPreset, overrides),
+      await getSendParams(currentModel, currentPreset, overrides, models),
       (chunk) => {
         if (chunk.sid && !sessionId) {
           setSessionId(chunk.sid);
