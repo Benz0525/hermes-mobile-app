@@ -145,7 +145,7 @@ export async function uploadFile(uri, fileName, mimeType) {
  * @returns {Promise<Array>} [{ id, title, model, started_at, message_count, ... }]
  */
 export async function fetchSessions() {
-  const res = await fetch(`${HERMES_API}/api/sessions?source=weixin&limit=200`, {
+  const res = await fetch(`${HERMES_API}/api/sessions`, {
     headers: { Authorization: `Bearer ${API_KEY}` },
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
