@@ -4,6 +4,7 @@ import { Alert, Linking, Text, View, ActivityIndicator, TouchableOpacity, StyleS
 import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { StatusBar } from 'expo-status-bar';
+import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { Colors } from './src/colors';
 import { checkUpdate, downloadAndInstall } from './src/utils/update';
 
@@ -150,6 +151,7 @@ export default function App() {
 
   return (
     <ErrorBoundary>
+    <KeyboardProvider>
     <>
       <StatusBar style="light" />
       {/* 下载进度遮罩 */}
@@ -229,6 +231,7 @@ export default function App() {
         </Stack.Navigator>
       </NavigationContainer>
     </>
+    </KeyboardProvider>
     </ErrorBoundary>
   );
 }

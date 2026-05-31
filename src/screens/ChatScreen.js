@@ -8,13 +8,13 @@ import {
   TextInput,
   TouchableOpacity,
   Text,
-  KeyboardAvoidingView,
   Keyboard,
   Platform,
   StyleSheet,
   Alert,
   ActivityIndicator,
 } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 // [版本D] 恢复图片+文件，音频仍禁用
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
@@ -626,7 +626,7 @@ export default function ChatScreen({ route, navigation }) {
 
   // ─── 输入栏（共用） ─────────────────────────────────
   const renderInputBar = () => (
-    <View style={[styles.inputBar, { paddingBottom: 36 }]}>
+    <View style={[styles.inputBar, { paddingBottom: 12 }]}>
       {/* [版本D] ➕ 附件按钮已恢复 */}
       <TouchableOpacity
         style={styles.attachBtn}
@@ -675,10 +675,7 @@ export default function ChatScreen({ route, navigation }) {
   // ─── 空状态 ─────────────────────────────────────────
   if (messages.length === 0) {
     return (
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
-        style={{flex:1}}>
+      <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
       <View style={styles.container}>
         {/* v5.4.2: 角色指示条（深度在 drawer/inputBar 切换） */}
         <View style={styles.personaBar}>
@@ -711,10 +708,7 @@ export default function ChatScreen({ route, navigation }) {
   }
 
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
-      style={{flex:1}}>
+    <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
     <View style={styles.container}>
       {/* v5.4.2: 角色指示条（深度在 drawer/inputBar 切换） */}
       <View style={styles.personaBar}>

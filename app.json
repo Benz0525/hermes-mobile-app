@@ -31,8 +31,7 @@
         "expo-build-properties",
         {
           "android": {
-            "usesCleartextTraffic": true,
-            "softwareKeyboardLayoutMode": "pan"
+            "usesCleartextTraffic": true
           }
         }
       ]
