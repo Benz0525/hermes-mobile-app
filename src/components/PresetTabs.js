@@ -1,15 +1,34 @@
-// v5.3.0: 预设标签栏 — 独立于模型，VL 时隐藏，纯展示 no editing
+// v5.3.3: 预设标签栏 — 每个按钮下方显示当前 model 下该档的 API 参数（调试用）
 import React from 'react';
 import {
   View, Text, TouchableOpacity, ScrollView, StyleSheet,
 } from 'react-native';
 import { Colors } from '../colors';
 
+// 把 max_tokens 数字转成紧凑 k 单位字符串
+function fmtMax(n) {
+  if (!n && n !== 0) return '-';
+  if (n >= 1024 && n % 1024 === 0) return (n / 1024) + 'k';
+  if (n >= 1000) return (n / 1000).toFixed(n % 1000 === 0 ? 0 : 1) + 'k';
+  return String(n);
+}
+
+// 把 thinking 字段转成短标签
+function fmtThink(t) {
+  if (!t) return '';
+  if (t === 'on')   return 'th:on';
+  if (t === 'off')  return '';            // off 不显示，省空间
+  if (t === 'high') return 'th:hi';
+  if (t === 'low')  return 'th:lo';
+  return 'th:' + t;
+}
+
 export default function PresetTabs({
   activePresetId,
   currentModel,
   presets,
   models,
+  overrides,
   onPresetSelect,
   disabled,
 }) {
@@ -28,6 +47,9 @@ export default function PresetTabs({
     onPresetSelect(preset.id);
   };
 
+  // 当前 model 下的参数表 {presetId: {temperature, max_tokens, thinking}}
+  const modelOv = (overrides && overrides[currentModel]) || {};
+
   return (
     <View style={styles.wrapper}>
       <ScrollView
@@ -35,24 +57,41 @@ export default function PresetTabs({
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.scroll}
       >
-        {list.map(p => (
-          <TouchableOpacity
-            key={p.id}
-            style={[
-              styles.tab,
-              activePresetId === p.id && styles.tabActive,
-            ]}
-            onPress={() => handleSelect(p)}
-            activeOpacity={0.7}
-            disabled={disabled}
-          >
-            <Text style={styles.icon}>{p.icon}</Text>
-            <Text style={[
-              styles.label,
-              activePresetId === p.id && styles.labelActive,
-            ]}>{p.label}</Text>
-          </TouchableOpacity>
-        ))}
+        {list.map(p => {
+          const params = modelOv[p.id] || {};
+          const hasParams = params.temperature !== undefined || params.max_tokens !== undefined;
+          const thinkLabel = fmtThink(params.thinking);
+          const paramText = hasParams
+            ? 'T=' + (params.temperature !== undefined ? params.temperature : '-') + ' · ' + fmtMax(params.max_tokens) + (thinkLabel ? ' · ' + thinkLabel : '')
+            : '';
+          const isActive = activePresetId === p.id;
+          return (
+            <TouchableOpacity
+              key={p.id}
+              style={[
+                styles.tab,
+                isActive && styles.tabActive,
+              ]}
+              onPress={() => handleSelect(p)}
+              activeOpacity={0.7}
+              disabled={disabled}
+            >
+              <View style={styles.tabRow}>
+                <Text style={styles.icon}>{p.icon}</Text>
+                <Text style={[
+                  styles.label,
+                  isActive && styles.labelActive,
+                ]}>{p.label}</Text>
+              </View>
+              {paramText ? (
+                <Text style={[
+                  styles.paramText,
+                  isActive && styles.paramTextActive,
+                ]} numberOfLines={1}>{paramText}</Text>
+              ) : null}
+            </TouchableOpacity>
+          );
+        })}
       </ScrollView>
     </View>
   );
@@ -69,18 +108,21 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   tab: {
-    flexDirection: 'row',
-    alignItems: 'center',
     backgroundColor: Colors.card,
-    borderRadius: 20,
+    borderRadius: 14,
     paddingHorizontal: 12,
-    paddingVertical: 7,
+    paddingVertical: 6,
     borderWidth: 1,
     borderColor: Colors.border,
+    alignItems: 'center',
   },
   tabActive: {
     backgroundColor: Colors.activeBg,
     borderColor: Colors.activeBorder,
+  },
+  tabRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   icon: {
     fontSize: 13,
@@ -93,5 +135,15 @@ const styles = StyleSheet.create({
   labelActive: {
     color: Colors.activeText,
     fontWeight: '600',
+  },
+  paramText: {
+    color: Colors.sub,
+    fontSize: 10,
+    marginTop: 2,
+    opacity: 0.7,
+  },
+  paramTextActive: {
+    color: Colors.activeText,
+    opacity: 0.9,
   },
 });

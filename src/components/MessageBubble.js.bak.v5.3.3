@@ -35,7 +35,7 @@ const SegmentText = memo(function SegmentText({ text, style }) {
  * @param {function} onToggleReasoning - 切换推理折叠区
  * @param {boolean} showDebugInfo - 是否显示 API 调试信息（设置开关）
  */
-function MessageBubble({
+export default function MessageBubble({
   message,
   isThinking = false,
   isStreaming = false,
@@ -450,7 +450,6 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   // v5.3.1: API 调试信息 badge
-  // v5.3.3: 加大 fontSize + 提高 opacity，调试 badge 看清楚
   metaBadge: {
     marginTop: 6,
     paddingTop: 6,
@@ -458,17 +457,14 @@ const styles = StyleSheet.create({
     borderTopColor: Colors.border,
   },
   metaLine1: {
-    fontSize: 11,
+    fontSize: 10,
     color: Colors.sub,
-    opacity: 0.85,
+    opacity: 0.55,
   },
   metaLine2: {
-    fontSize: 11,
+    fontSize: 10,
     color: Colors.sub,
-    opacity: 0.7,
+    opacity: 0.4,
     marginTop: 2,
   },
 });
-
-// v5.3.3: 包 memo 避免父组件 setState 时无关气泡重渲染（仅 props 变化时才重绘）
-export default memo(MessageBubble);

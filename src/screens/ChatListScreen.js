@@ -96,10 +96,19 @@ export default function ChatListScreen({ navigation }) {
   // 设置页面头部
   React.useLayoutEffect(() => {
     navigation.setOptions({
+      // v5.3.3: 右上角 ⚙️ 设置 + ＋ 新建（设置全局入口下沉到列表页）
       headerRight: () => (
-        <TouchableOpacity onPress={handleNewChat} style={styles.addBtn}>
-          <Text style={styles.addBtnText}>＋</Text>
-        </TouchableOpacity>
+        <View style={styles.headerRightRow}>
+          <TouchableOpacity
+            onPress={() => navigation.navigate('Settings')}
+            style={styles.headerIconBtn}
+          >
+            <Text style={styles.headerIcon}>⚙️</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={handleNewChat} style={styles.addBtn}>
+            <Text style={styles.addBtnText}>＋</Text>
+          </TouchableOpacity>
+        </View>
       ),
     });
   }, [navigation]);
@@ -199,6 +208,23 @@ const styles = StyleSheet.create({
   list: {
     paddingTop: 8,
     paddingBottom: 16,
+  },
+  // v5.3.3 头部按钮容器
+  headerRightRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginRight: 4,
+  },
+  headerIconBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 4,
+  },
+  headerIcon: {
+    fontSize: 20,
   },
   addBtn: {
     width: 36,

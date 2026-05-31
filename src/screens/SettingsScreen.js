@@ -126,8 +126,8 @@ export default function SettingsScreen({ navigation }) {
         <Text style={styles.sectionTitle}>关于</Text>
         <View style={styles.infoCard}>
           <Text style={styles.aboutText}>
-                      Hermes v4.1 Alpha · Lightning Mode{'\n\n'}
-                      40人并行开发 · 1小时交付 · 键盘适配 · SSE重试 · 网络优化{'\n\n'}
+                      Hermes Mobile v5.3.3 · 4-Model Direct Routing{'\n\n'}
+                      DeepSeek V4 Pro · Qwen3.7-Max · GLM-5.1 · Qwen-VL-Max · 预设解耦 · 调试 Badge · reasoning 节流{'\n\n'}
                       Built with React Native & Expo.
                     </Text>
         </View>

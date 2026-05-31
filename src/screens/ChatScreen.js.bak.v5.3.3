@@ -219,8 +219,14 @@ export default function ChatScreen({ route, navigation }) {
           onSelect={handleModelSelect}
         />
       ),
-      // v5.3.3: [M1] 左上角模型选择保留；⚙️ 设置已下沉到会话列表页
-      headerRight: () => null,
+      headerRight: () => (
+        <TouchableOpacity
+          onPress={() => navigation.navigate('Settings')}
+          style={styles.settingsBtn}
+        >
+          <Text style={styles.settingsIcon}>⚙️</Text>
+        </TouchableOpacity>
+      ),
     });
   }, [navigation, currentModel, models]);
 
@@ -233,29 +239,15 @@ export default function ChatScreen({ route, navigation }) {
    */
   const typewriterTick = useCallback(() => {
     const pending = pendingRef.current;
-    if (!pending.text && !pending.reasoning) return;
+    if (!pending.text) return;
+    const N = pending.text.length > 200 ? 3 : pending.text.length > 80 ? 2 : 1;
+    const chunk = pending.text.slice(0, N);
+    pending.text = pending.text.slice(N);
 
     const msgs = [...messagesRef.current];
     const last = msgs[msgs.length - 1];
-    if (!last || last.role !== 'hermes') return;
-
-    let changed = false;
-    // text: 打字机分批吐字
-    if (pending.text) {
-      const N = pending.text.length > 200 ? 3 : pending.text.length > 80 ? 2 : 1;
-      const chunk = pending.text.slice(0, N);
-      pending.text = pending.text.slice(N);
+    if (last && last.role === 'hermes') {
       last.text = (last.text || '') + chunk;
-      changed = true;
-    }
-    // v5.3.3: reasoning 也走 35ms 节流，一次吐完蓄水池，避免每个 token 都 setState 掉帧
-    if (pending.reasoning) {
-      last.reasoning = (last.reasoning || '') + pending.reasoning;
-      pending.reasoning = '';
-      changed = true;
-    }
-
-    if (changed) {
       messagesRef.current = msgs;
       setMessages([...msgs]);
       smartScrollToBottom();
@@ -328,12 +320,13 @@ export default function ChatScreen({ route, navigation }) {
           setSessionId(chunk.sid);
         }
 
-        // v5.3.3: reasoning 不再立即 flush，囤入蓄水池由 typewriter tick (35ms) 节流消费，避免每 token setState 掉帧
+        // reasoning → 立即 flush
         if (chunk.reasoning) {
           if (!reasoningStartRef.current) {
             reasoningStartRef.current = Date.now();
           }
           pendingRef.current.reasoning += chunk.reasoning;
+          flushMeta();
         }
 
         // tool_calls → 立即 flush
@@ -354,17 +347,14 @@ export default function ChatScreen({ route, navigation }) {
           clearInterval(typewriterTimerRef.current);
           typewriterTimerRef.current = null;
         }
-        // v5.3.3: 把 pendingRef 里剩余的 text 和 reasoning 一次性追加
-        const remainingText = pendingRef.current.text;
-        const remainingReasoning = pendingRef.current.reasoning;
+        // 把 pendingRef 里剩余的文字一次性追加
+        const remaining = pendingRef.current.text;
         pendingRef.current.text = '';
-        pendingRef.current.reasoning = '';
-        if (remainingText || remainingReasoning) {
+        if (remaining) {
           const msgs = [...messagesRef.current];
           const last = msgs[msgs.length - 1];
           if (last && last.role === 'hermes') {
-            if (remainingText) last.text = (last.text || '') + remainingText;
-            if (remainingReasoning) last.reasoning = (last.reasoning || '') + remainingReasoning;
+            last.text = (last.text || '') + remaining;
             messagesRef.current = msgs;
             setMessages([...msgs]);
           }
@@ -404,39 +394,31 @@ export default function ChatScreen({ route, navigation }) {
           clearInterval(typewriterTimerRef.current);
           typewriterTimerRef.current = null;
         }
-        // v5.3.3: 出错时 text 和 reasoning 残余都补上，避免丢字
-        const remainingText = pendingRef.current.text;
-        const remainingReasoning = pendingRef.current.reasoning;
+        const remaining = pendingRef.current.text;
         pendingRef.current = { text: '', reasoning: '', toolCalls: [] };
         setIsStreaming(false);
         abortRef.current = null;
         const msgs = [...messagesRef.current];
         const last = msgs[msgs.length - 1];
         if (last && last.role === 'hermes') {
-          if (remainingText) last.text = (last.text || '') + remainingText;
-          if (remainingReasoning) last.reasoning = (last.reasoning || '') + remainingReasoning;
+          if (remaining) last.text = (last.text || '') + remaining;
           last.text = last.text || `❌ ${error}`;
           setMessages([...msgs]);
           messagesRef.current = msgs;
         }
         persistMessages(msgs);
       },
-      // v5.3.3: meta 调试信息回调 — 新建消息对象替换 last，避免 mutate 导致 FlatList/memo 不重渲染
+      // v5.3.1: meta 调试信息回调 (type=meta 的 SSE 事件)
       (meta) => {
         const msgs = [...messagesRef.current];
-        const lastIdx = msgs.length - 1;
-        const last = msgs[lastIdx];
+        const last = msgs[msgs.length - 1];
         if (last && last.role === 'hermes') {
-          msgs[lastIdx] = {
-            ...last,
-            meta: {
-              model: meta.model || '',
-              endpoint: meta.endpoint || '',
-              latency_ms: meta.latency_ms || 0,
-              temperature: meta.temperature,
-              max_tokens: meta.max_tokens,
-              thinking: meta.thinking || '',
-            },
+          last.meta = {
+            model: meta.model || '',
+            endpoint: meta.endpoint || '',
+            latency_ms: meta.latency_ms || 0,
+            temperature: meta.temperature,
+            max_tokens: meta.max_tokens,
           };
           messagesRef.current = msgs;
           setMessages([...msgs]);
@@ -655,7 +637,6 @@ export default function ChatScreen({ route, navigation }) {
           currentModel={currentModel}
           presets={presets}
           models={models}
-          overrides={overrides}
           onPresetSelect={handlePresetSelect}
           disabled={isStreaming}
         />
@@ -689,14 +670,12 @@ export default function ChatScreen({ route, navigation }) {
         currentModel={currentModel}
         presets={presets}
         models={models}
-        overrides={overrides}
         onPresetSelect={handlePresetSelect}
         disabled={isStreaming}
       />
       <FlatList
         ref={flatListRef}
         data={messages}
-        extraData={isStreaming ? (messages[messages.length-1]) : messages.length}
         keyExtractor={(item) => item.id}
         renderItem={renderMessage}
         contentContainerStyle={styles.messageList}
