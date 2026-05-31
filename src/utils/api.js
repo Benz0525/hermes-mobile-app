@@ -9,7 +9,7 @@ const MAX_RETRIES = 3;       // 最大重试次数
 /**
  * 发送消息并接收 SSE 流式响应（带心跳 + 指数退避重试）
  */
-export function sendMessageStream(text, sessionId, config, onChunk, onDone, onError) {
+export function sendMessageStream(text, sessionId, config, onChunk, onDone, onError, onMeta) {
   let retryCount = 0;
   let aborted = false;
 
@@ -58,7 +58,12 @@ export function sendMessageStream(text, sessionId, config, onChunk, onDone, onEr
             }
             try {
               const parsed = JSON.parse(raw);
-              onChunk(parsed);
+              // v5.3.1: meta 事件单独回调
+              if (parsed.type === 'meta') {
+                if (onMeta) onMeta(parsed);
+              } else {
+                onChunk(parsed);
+              }
             } catch {
               // 忽略解析失败的行
             }

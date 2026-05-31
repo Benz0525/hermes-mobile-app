@@ -29,15 +29,18 @@ const SegmentText = memo(function SegmentText({ text, style }) {
  *   - 语音：   { id, role, text, timestamp, audio: { uri, duration } }
  *   - Phase 1: reasoning  { reasoning, reasoningOpen, reasoningDuration }
  *   - Phase 1: toolCalls  [{ name, arguments, result, status }]
+ *   - v5.3.1: meta        { model, endpoint, latency_ms, temperature, max_tokens }
  * @param {boolean} isThinking - 是否正在思考中（显示转圈动画）
  * @param {boolean} isStreaming - 当前 bot 消息是否在流式接收中
  * @param {function} onToggleReasoning - 切换推理折叠区
+ * @param {boolean} showDebugInfo - 是否显示 API 调试信息（设置开关）
  */
 export default function MessageBubble({
   message,
   isThinking = false,
   isStreaming = false,
   onToggleReasoning,
+  showDebugInfo = true,
 }) {
   if (!message) return null;
 
@@ -218,6 +221,18 @@ export default function MessageBubble({
 
         {/* 正文（图片/文件/语音/文字） */}
         {renderContent()}
+
+        {/* v5.3.1: API 调试信息 badge（气泡底部，仅 hermes + 开启时） */}
+        {!isUser && showDebugInfo && message.meta ? (
+          <View style={styles.metaBadge}>
+            <Text style={styles.metaLine1} numberOfLines={1}>
+              {message.meta.model} · T={message.meta.temperature} · max={message.meta.max_tokens}
+            </Text>
+            <Text style={styles.metaLine2} numberOfLines={1}>
+              ↳ {message.meta.endpoint} · {message.meta.latency_ms}ms
+            </Text>
+          </View>
+        ) : null}
       </TouchableOpacity>
 
       {/* 时间（气泡下方） */}
@@ -433,5 +448,23 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     padding: 8,
     overflow: 'hidden',
+  },
+  // v5.3.1: API 调试信息 badge
+  metaBadge: {
+    marginTop: 6,
+    paddingTop: 6,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: Colors.border,
+  },
+  metaLine1: {
+    fontSize: 10,
+    color: Colors.sub,
+    opacity: 0.55,
+  },
+  metaLine2: {
+    fontSize: 10,
+    color: Colors.sub,
+    opacity: 0.4,
+    marginTop: 2,
   },
 });

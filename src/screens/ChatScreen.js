@@ -49,6 +49,8 @@ export default function ChatScreen({ route, navigation }) {
   const [models, setModels] = useState([]);
   const [presets, setPresets] = useState([]);
   const [overrides, setOverrides] = useState(FALLBACK_OVERRIDES);
+  // v5.3.1: API 调试信息开关
+  const [showDebugInfo, setShowDebugInfo] = useState(true);
 
   // ─── Phase 1: 滚底检测 ────────────────────────────────
   const [isAtBottom, setIsAtBottom] = useState(true);
@@ -197,6 +199,14 @@ export default function ChatScreen({ route, navigation }) {
       recordingRef.current?.stopAndUnloadAsync?.();
       if (typewriterTimerRef.current) clearInterval(typewriterTimerRef.current);
     };
+  }, []);
+
+  // v5.3.1: 初始化读取 API 调试开关
+  React.useEffect(() => {
+    const { AsyncStorage } = require('@react-native-async-storage/async-storage');
+    AsyncStorage.getItem('hermes_show_api_debug').then((v) => {
+      if (v !== null) setShowDebugInfo(v === 'true');
+    });
   }, []);
 
   // 右上角设置按钮 + [M1] 左上角模型选择
@@ -397,6 +407,22 @@ export default function ChatScreen({ route, navigation }) {
           messagesRef.current = msgs;
         }
         persistMessages(msgs);
+      },
+      // v5.3.1: meta 调试信息回调 (type=meta 的 SSE 事件)
+      (meta) => {
+        const msgs = [...messagesRef.current];
+        const last = msgs[msgs.length - 1];
+        if (last && last.role === 'hermes') {
+          last.meta = {
+            model: meta.model || '',
+            endpoint: meta.endpoint || '',
+            latency_ms: meta.latency_ms || 0,
+            temperature: meta.temperature,
+            max_tokens: meta.max_tokens,
+          };
+          messagesRef.current = msgs;
+          setMessages([...msgs]);
+        }
       }
     );
 
@@ -559,6 +585,7 @@ export default function ChatScreen({ route, navigation }) {
         isThinking={isThinking}
         isStreaming={item.role === 'hermes' && isStreaming}
         onToggleReasoning={item.reasoning ? () => toggleReasoning(item.id) : undefined}
+        showDebugInfo={showDebugInfo}
       />
     );
   };

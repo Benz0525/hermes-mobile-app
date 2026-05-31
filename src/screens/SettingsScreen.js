@@ -1,5 +1,5 @@
 // 设置页面 —— Linear 暗色风格
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -8,7 +8,9 @@ import {
   Alert,
   StyleSheet,
   Platform,
+  Switch,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Colors } from '../colors';
 import { saveConversations } from '../utils/storage';
 import { checkUpdate, downloadAndInstall } from '../utils/update';
@@ -18,6 +20,19 @@ const APP_NAME = 'Hermes';
 const SERVER_URL = 'http://8.163.2.252/app-api';
 
 export default function SettingsScreen({ navigation }) {
+  // v5.3.1: API 调试信息开关（默认开）
+  const [showDebugInfo, setShowDebugInfo] = useState(true);
+
+  useEffect(() => {
+    AsyncStorage.getItem('hermes_show_api_debug').then((v) => {
+      if (v !== null) setShowDebugInfo(v === 'true');
+    });
+  }, []);
+
+  const toggleDebugInfo = async (val) => {
+    setShowDebugInfo(val);
+    await AsyncStorage.setItem('hermes_show_api_debug', String(val));
+  };
   // 检查更新
   const handleCheckUpdate = async () => {
     const result = await checkUpdate();
@@ -90,6 +105,20 @@ export default function SettingsScreen({ navigation }) {
         <TouchableOpacity style={styles.dangerBtn} onPress={handleClearAll}>
           <Text style={styles.dangerBtnText}>清除所有会话</Text>
         </TouchableOpacity>
+      </View>
+
+      {/* v5.3.1: API 调试信息开关 */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>调试</Text>
+        <View style={styles.switchRow}>
+          <Text style={styles.switchLabel}>显示 API 调试信息</Text>
+          <Switch
+            value={showDebugInfo}
+            onValueChange={toggleDebugInfo}
+            trackColor={{ false: '#333', true: Colors.accent }}
+            thumbColor="#fff"
+          />
+        </View>
       </View>
 
       {/* 关于 */}
@@ -208,5 +237,22 @@ const styles = StyleSheet.create({
   actionHint: {
     fontSize: 12,
     color: Colors.sub,
+  },
+  // v5.3.1: Switch 行
+  switchRow: {
+    backgroundColor: Colors.card,
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  switchLabel: {
+    fontSize: 15,
+    color: Colors.text,
+    flex: 1,
+    marginRight: 12,
   },
 });
